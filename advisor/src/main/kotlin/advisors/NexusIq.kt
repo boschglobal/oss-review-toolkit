@@ -137,7 +137,7 @@ class NexusIq(name: String, private val nexusIqConfig: NexusIqConfiguration) : A
         components: List<NexusIqService.Component>
     ): NexusIqService.ComponentDetailsWrapper =
         try {
-            log.debug { "Querying component details from ${nexusIqConfig.serverUrl}." }
+            log.debug { "Querying component details for $components." }
             service.getComponentDetails(NexusIqService.ComponentsWrapper(components))
         } catch (e: HttpException) {
             throw IOException(e)

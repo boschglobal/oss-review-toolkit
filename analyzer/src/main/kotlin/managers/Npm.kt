@@ -67,6 +67,7 @@ import org.ossreviewtoolkit.model.readValue
 import org.ossreviewtoolkit.model.utils.DependencyGraphBuilder
 import org.ossreviewtoolkit.utils.common.CommandLineTool
 import org.ossreviewtoolkit.utils.common.Os
+import org.ossreviewtoolkit.utils.common.ProcessCapture
 import org.ossreviewtoolkit.utils.common.fieldNamesOrEmpty
 import org.ossreviewtoolkit.utils.common.isSymbolicLink
 import org.ossreviewtoolkit.utils.common.realFile
@@ -644,6 +645,10 @@ open class Npm(
         process.stderr.withoutPrefix("Error: ")?.also { throw IOException(it.lineSequence().first()) }
     }
 
-    protected open fun runInstall(workingDir: File) =
-        run(workingDir, if (hasLockFile(workingDir)) "ci" else "install", "--ignore-scripts", "--no-audit")
+    protected open fun runInstall(workingDir: File): ProcessCapture {
+        val capture = run(workingDir, "config", "list", "--verbose")
+        log.info { "NPM config is\n${capture.stdout}" }
+
+        return run(workingDir, if (hasLockFile(workingDir)) "ci" else "install", "--ignore-scripts", "--no-audit", "--verbose")
+    }
 }

@@ -37,7 +37,7 @@ class ProcessCapture(vararg command: String, workingDir: File? = null, environme
     constructor(workingDir: File?, vararg command: String) : this(*command, workingDir = workingDir)
 
     companion object : Logging {
-        private const val MAX_OUTPUT_LINES = 20
+        private const val MAX_OUTPUT_LINES = 5000
         private const val MAX_OUTPUT_FOOTER =
             "(Above output is limited to each $MAX_OUTPUT_LINES heading and tailing lines.)"
 
@@ -86,6 +86,16 @@ class ProcessCapture(vararg command: String, workingDir: File? = null, environme
 
     val commandLine = command.joinToString(" ")
     val usedWorkingDir = builder.directory() ?: System.getProperty("user.dir")!!
+
+    init {
+        println("Running '$commandLine' in $usedWorkingDir with environment:")
+        System.getenv().forEach { entry ->
+            println("${entry.key}=${entry.value.take(3)}...")
+            if(entry.value.contains("fe-artifactory")) {
+                println(" ==> ${entry.value}")
+            }
+        }
+    }
 
     private val process = builder.start()
 

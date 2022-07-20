@@ -145,8 +145,12 @@ class GoMod(
      * Return the module graph output from `go mod graph` with non-vendor dependencies removed.
      */
     private fun getModuleGraph(projectDir: File): Graph {
-        val moduleInfoForModuleName = getModuleInfos(projectDir).map { it.replace ?: it }
+        val moduleInfos = getModuleInfos(projectDir)
+        val moduleInfoForModuleName = moduleInfos.map { it.replace ?: it }
             .associateBy({ it.path }, { it })
+
+        log.info { "Found these moduleInfos: $moduleInfos" }
+        log.info { "Constructed this path mapping: $moduleInfoForModuleName" }
 
         fun moduleInfo(moduleName: String): ModuleInfo = moduleInfoForModuleName.getValue(moduleName)
 

@@ -57,6 +57,7 @@ class Downloader(private val config: DownloaderConfiguration) {
         }
 
         outputDirectory.apply { safeMkdirs() }
+        outputDirectory.setWritable(true)
     }
 
     /**

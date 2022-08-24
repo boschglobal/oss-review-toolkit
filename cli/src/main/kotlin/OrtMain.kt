@@ -58,6 +58,7 @@ import org.ossreviewtoolkit.utils.ort.ortDataDirectory
 import org.ossreviewtoolkit.utils.ort.printStackTrace
 
 import org.slf4j.LoggerFactory
+import java.time.LocalDateTime
 
 /**
  * Helper class for mutually exclusive command line options of different types.
@@ -80,7 +81,11 @@ data class GlobalOptions(
  */
 fun main(args: Array<String>) {
     Os.fixupUserHomeProperty()
-    OrtMain().main(args)
+    try {
+        OrtMain().main(args)
+    } finally {
+        println("ORT command execution terminated at ${LocalDateTime.now()}.")
+    }
     exitProcess(0)
 }
 

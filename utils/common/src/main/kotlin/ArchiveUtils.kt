@@ -46,6 +46,7 @@ import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
 import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
 import org.apache.commons.compress.utils.SeekableInMemoryByteChannel
+import org.apache.logging.log4j.kotlin.logger
 
 enum class ArchiveType(vararg val extensions: String) {
     SEVENZIP(".7z"),
@@ -306,6 +307,8 @@ fun File.packZip(
         "The target ZIP file '${targetFile.absolutePath}' must not exist."
     }
 
+    val logger = logger()
+
     ZipArchiveOutputStream(targetFile).use { output ->
         output.setLevel(Deflater.BEST_COMPRESSION)
 
@@ -314,6 +317,7 @@ fun File.packZip(
         }.filter {
             Files.isRegularFile(it.toPath(), LinkOption.NOFOLLOW_LINKS) && fileFilter(it) && it != targetFile
         }.forEach { file ->
+            logger.info { "Packaging '$file'." }
             val packPath = prefix + file.toRelativeString(this)
             val entry = ZipArchiveEntry(file, packPath)
             output.putArchiveEntry(entry)

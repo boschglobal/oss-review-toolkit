@@ -12,6 +12,10 @@ rules:
   footer-leading-blank:
     - 2
     - always
+  footer-max-line-length:
+    - 0
+    - always
+    - Infinity
   header-max-length:
     - 2
     - always

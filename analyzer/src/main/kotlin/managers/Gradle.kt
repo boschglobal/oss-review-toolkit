@@ -246,7 +246,9 @@ class Gradle(
                     version = dependencyTreeModel.version
                 )
 
-                dependencyTreeModel.configurations.forEach { configuration ->
+                dependencyTreeModel.configurations.filterNot { "Test" in it.name }
+                    .forEach { configuration ->
+                        logger.info("Processing scope ${configuration.name}.")
                     configuration.dependencies.forEach { dependency ->
                         graphBuilder.addDependency(
                             DependencyGraph.qualifyScope(projectId, configuration.name),

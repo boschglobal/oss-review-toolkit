@@ -66,6 +66,7 @@ include(":plugins:reporters:ctrlx")
 include(":plugins:reporters:cyclonedx")
 include(":plugins:reporters:fossid")
 include(":plugins:reporters:spdx")
+include(":plugins:package-managers:nuget")
 include(":reporter")
 include(":reporter-web-app")
 include(":scanner")
@@ -103,6 +104,7 @@ project(":plugins:package-managers:python").name = "python-package-manager"
 project(":plugins:package-managers:spdx").name = "spdx-package-manager"
 project(":plugins:package-managers:stack").name = "stack-package-manager"
 project(":plugins:package-managers:unmanaged").name = "unmanaged-package-manager"
+project(":plugins:package-managers:nuget").name = "nuget-package-manager"
 
 project(":plugins:reporters:ctrlx").name = "ctrlx-reporter"
 project(":plugins:reporters:cyclonedx").name = "cyclonedx-reporter"

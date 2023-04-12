@@ -195,3 +195,7 @@ license_choices:
     license_choices:
     - given: "LGPL-2.1-or-later OR GPL-2.0-or-later OR EPL-2.0"
       choice: "EPL-2.0"
+  - package_id: "NPM::node-forge:0.10.0"
+    license_choices:
+    - given: "BSD-3-Clause OR GPL-2.0-only"
+      choice: "BSD-3-Clause"

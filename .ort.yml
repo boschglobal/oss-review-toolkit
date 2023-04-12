@@ -188,3 +188,10 @@ curations:
     reason: "CODE"
     comment: >-
       This file uses several variables named after licenses.
+
+license_choices:
+  package_license_choices:
+  - package_id: "Maven:com.github.jnr:jnr-posix:3.1.16"
+    license_choices:
+    - given: "LGPL-2.1-or-later OR GPL-2.0-or-later OR EPL-2.0"
+      choice: "EPL-2.0"

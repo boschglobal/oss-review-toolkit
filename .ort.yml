@@ -199,3 +199,7 @@ license_choices:
     license_choices:
     - given: "BSD-3-Clause OR GPL-2.0-only"
       choice: "BSD-3-Clause"
+  - package_id: "Maven:org.jruby:jruby-base:9.4.2.0"
+    license_choices:
+    - given: "EPL-2.0 OR GPL-2.0-only OR LGPL-2.1-only"
+      choice: "EPL-2.0"

@@ -142,6 +142,52 @@
           }
         }
       }
+    },
+    "package_snippet_choices": {
+      "type": "array",
+      "description": "A configuration to select a snippet from a package with multiple snippet findings.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "provenanceUrl": {
+            "type": "string"
+          },
+          "snippet_choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sourceLocation": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "lineStart": {
+                      "type": "integer"
+                    },
+                    "lineEnd": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["path", "lineStart", "lineEnd"]
+                },
+                "reasoning": {
+                  "type": "string"
+                },
+                "license": {
+                  "type": "string"
+                },
+                "snippet": {
+                  "type": "string"
+                }
+              },
+              "required": ["sourceLocation", "reasoning", "license", "snippet"]
+            }
+          }
+        },
+        "required" : ["provenanceUrl", "snippet_choices"]
+      }
     }
   },
   "definitions": {

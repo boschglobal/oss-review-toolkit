@@ -100,6 +100,7 @@ import org.ossreviewtoolkit.model.TextLocation
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.Excludes
+import org.ossreviewtoolkit.model.config.PackageSnippetChoice
 import org.ossreviewtoolkit.model.config.PathExclude
 import org.ossreviewtoolkit.model.config.PathExcludeReason
 import org.ossreviewtoolkit.plugins.scanners.fossid.FossId.Companion.SCAN_CODE_KEY
@@ -1148,12 +1149,12 @@ private val DEFAULT_IGNORE_RULE_SCOPE = RuleScope.SCAN
 /**
  * Create a new [FossId] instance with the specified [config].
  */
-private fun createFossId(config: FossIdConfig): FossId = FossId("FossId", config, ScannerWrapperConfig.EMPTY)
+internal fun createFossId(config: FossIdConfig): FossId = FossId("FossId", config, ScannerWrapperConfig.EMPTY)
 
 /**
  * Create a standard [FossIdConfig] whose properties can be partly specified.
  */
-private fun createConfig(
+internal fun createConfig(
     waitForResult: Boolean = true,
     deltaScans: Boolean = true,
     deltaScanLimit: Int = Int.MAX_VALUE,
@@ -1204,7 +1205,7 @@ private fun createNamingProviderMock(): FossIdNamingProvider {
  * Create a mock for the [FossIdRestService]. The mock is prepared to return its version. (This is queried directly
  * in the constructor of [FossId].)
  */
-private fun createServiceMock(): FossIdServiceWithVersion {
+internal fun createServiceMock(): FossIdServiceWithVersion {
     val service = mockk<FossIdServiceWithVersion>()
 
     coEvery { service.version } returns FOSSID_VERSION
@@ -1216,7 +1217,7 @@ private fun createServiceMock(): FossIdServiceWithVersion {
  * Create a mock for the [VersionControlSystem]. The mock is prepared to always return 'master' for the default branch
  * name.
  */
-private fun createVersionControlSystemMock(): VersionControlSystem {
+internal fun createVersionControlSystemMock(): VersionControlSystem {
     val vcs = mockk<VersionControlSystem>()
 
     coEvery { vcs.getDefaultBranchName(any()) } returns "master"
@@ -1227,12 +1228,12 @@ private fun createVersionControlSystemMock(): VersionControlSystem {
 /**
  * Generate a project code for the project with the given [name].
  */
-private fun projectCode(name: String): String = "$name:projectCode"
+internal fun projectCode(name: String): String = "$name:projectCode"
 
 /**
  * Generate a synthetic scan code for the project with the given [name], [tag], and [index].
  */
-private fun scanCode(name: String, tag: FossId.DeltaTag? = null, index: Int = 1): String =
+internal fun scanCode(name: String, tag: FossId.DeltaTag? = null, index: Int = 1): String =
     "$name:${tag?.name}:scanCode$index"
 
 /**
@@ -1248,7 +1249,7 @@ private fun createScanDescription(state: ScanStatus): UnversionedScanDescription
 /**
  * Create a mock [Scan] with the given properties.
  */
-private fun createScan(
+internal fun createScan(
     url: String,
     revision: String,
     scanCode: String,
@@ -1269,7 +1270,7 @@ private fun createScan(
  * Create a [VcsInfo] object for a project with the given [name][projectName] and the optional parameters for [type],
  * [path], and [revision].
  */
-private fun createVcsInfo(
+fun createVcsInfo(
     projectName: String = PROJECT,
     type: VcsType = VcsType.GIT,
     path: String = "",
@@ -1279,13 +1280,13 @@ private fun createVcsInfo(
 /**
  * Create a test [Identifier] with properties derived from the given [index].
  */
-private fun createIdentifier(index: Int = 1): Identifier =
+internal fun createIdentifier(index: Int = 1): Identifier =
     Identifier(type = "test", namespace = "test-ns", name = "test$index", version = "1.0.$index")
 
 /**
  * Create a test [Package] with the given [id] , [vcsInfo], and [authors].
  */
-private fun createPackage(id: Identifier, vcsInfo: VcsInfo, authors: Set<String> = emptySet()): Package =
+internal fun createPackage(id: Identifier, vcsInfo: VcsInfo, authors: Set<String> = emptySet()): Package =
     Package.EMPTY.copy(id = id, vcsProcessed = vcsInfo, authors = authors)
 
 /**
@@ -1450,7 +1451,7 @@ private fun createSnippetFindings(index: Int): SnippetFinding =
  * Prepare this service mock to answer a request for a project with the given [projectCode]. Return a response with
  * the given [status] and [error].
  */
-private fun FossIdServiceWithVersion.expectProjectRequest(
+fun FossIdServiceWithVersion.expectProjectRequest(
     projectCode: String,
     status: Int = 200,
     error: String? = null
@@ -1464,7 +1465,7 @@ private fun FossIdServiceWithVersion.expectProjectRequest(
  * Prepare this service mock to answer requests for the status of the scan with the given [scanCode]. The service
  * returns responses with the given [states] in succeeding invocations.
  */
-private fun FossIdServiceWithVersion.expectCheckScanStatus(
+fun FossIdServiceWithVersion.expectCheckScanStatus(
     scanCode: String,
     vararg states: ScanStatus
 ): FossIdServiceWithVersion {
@@ -1476,7 +1477,7 @@ private fun FossIdServiceWithVersion.expectCheckScanStatus(
 /**
  * Prepare this service mock to return the list of [scans] for the given [projectCode].
  */
-private fun FossIdServiceWithVersion.expectListScans(projectCode: String, scans: List<Scan>): FossIdServiceWithVersion {
+fun FossIdServiceWithVersion.expectListScans(projectCode: String, scans: List<Scan>): FossIdServiceWithVersion {
     coEvery { listScansForProject(USER, API_KEY, projectCode) } returns
         PolymorphicResponseBody(status = 1, data = PolymorphicList(scans))
     return this
@@ -1514,7 +1515,7 @@ private fun FossIdServiceWithVersion.expectCreateIgnoreRule(
  * Prepare this service mock to expect a download trigger for the given [scanCode] and later on to report that the
  * download has finished.
  */
-private fun FossIdServiceWithVersion.expectDownload(scanCode: String): FossIdServiceWithVersion {
+fun FossIdServiceWithVersion.expectDownload(scanCode: String): FossIdServiceWithVersion {
     coEvery { downloadFromGit(USER, API_KEY, scanCode) } returns
         EntityResponseBody(status = 1)
     coEvery { checkDownloadStatus(USER, API_KEY, scanCode) } returns
@@ -1526,7 +1527,7 @@ private fun FossIdServiceWithVersion.expectDownload(scanCode: String): FossIdSer
  * Prepare this service mock to expect a request to create a scan for the given [projectCode], [scanCode], and
  * [vcsInfo].
  */
-private fun FossIdServiceWithVersion.expectCreateScan(
+fun FossIdServiceWithVersion.expectCreateScan(
     projectCode: String,
     scanCode: String,
     vcsInfo: VcsInfo,
@@ -1593,10 +1594,11 @@ private fun FossIdServiceWithVersion.mockFiles(
 /**
  * Trigger a FossID scan of the given [package][pkg].
  */
-private fun FossId.scan(
+internal fun FossId.scan(
     pkg: Package,
     labels: Map<String, String> = emptyMap(),
-    excludes: Excludes = Excludes()
+    excludes: Excludes = Excludes(),
+    packageSnippetChoices: List<PackageSnippetChoice> = emptyList()
 ): ScanResult =
     scanPackage(
         nestedProvenance = NestedProvenance(
@@ -1610,6 +1612,7 @@ private fun FossId.scan(
             labels = labels,
             packageType = PackageType.PACKAGE,
             excludes = excludes,
-            coveredPackages = listOf(pkg)
+            coveredPackages = listOf(pkg),
+            packageSnippetChoices = packageSnippetChoices
         )
     )

@@ -288,7 +288,16 @@ class FossId internal constructor(
                     checkAndCreateScan(scans, url, revision, projectCode, projectName)
                 }
 
-                if (config.waitForResult) {
+                if (config.waitForResult && provenance is RepositoryProvenance) {
+                    val packageSnippetChoice = context.packageSnippetChoices.firstOrNull {
+                        it.provenanceUrl == provenance.vcsInfo.url
+                    }
+                    val snippetChoices = packageSnippetChoice?.snippetChoices.orEmpty()
+
+                    logger.info {
+                        "Repository ${provenance.vcsInfo.url} has ${snippetChoices.size} snippet choice(s)."
+                    }
+
                     val rawResults = getRawResults(scanCode)
                     createResultSummary(
                         startTime,
@@ -841,6 +850,7 @@ class FossId internal constructor(
     /**
      * Construct the [ScanSummary] for this FossID scan.
      */
+    @Suppress("LongParameterList")
     private fun createResultSummary(
         startTime: Instant,
         provenance: Provenance,

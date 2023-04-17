@@ -73,6 +73,7 @@ import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.model.UnknownProvenance
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
+import org.ossreviewtoolkit.model.config.SnippetChoice
 import org.ossreviewtoolkit.model.createAndLogIssue
 import org.ossreviewtoolkit.scanner.PackageScannerWrapper
 import org.ossreviewtoolkit.scanner.ProvenanceScannerWrapper
@@ -310,6 +311,15 @@ class FossId internal constructor(
                     }
 
                     if (config.waitForResult) {
+                        val packageSnippetChoice = context.packageSnippetChoices.firstOrNull {
+                            it.provenanceUrl == provenance.vcsInfo.url
+                        }
+                        val snippetChoices = packageSnippetChoice?.snippetChoices.orEmpty()
+
+                        logger.info {
+                            "Repository ${provenance.vcsInfo.url} has ${snippetChoices.size} snippet choice(s)."
+                        }
+
                         val rawResults = getRawResults(scanCode)
                         createResultSummary(
                             startTime,
@@ -318,7 +328,8 @@ class FossId internal constructor(
                             scanCode,
                             scanId,
                             issues,
-                            context.detectedLicenseMapping
+                            context.detectedLicenseMapping,
+                            snippetChoices
                         )
                     } else {
                         val issue = createAndLogIssue(
@@ -867,14 +878,23 @@ class FossId internal constructor(
         scanCode: String,
         scanId: String,
         additionalIssues: MutableList<Issue>,
-        detectedLicenseMapping: Map<String, String>
+        detectedLicenseMapping: Map<String, String>,
+        snippetChoices: List<SnippetChoice>
     ): ScanResult {
         // TODO: Maybe get issues from FossID (see has_failed_scan_files, get_failed_files and maybe get_scan_log).
+
+        val pendingFileCount = rawResults.listPendingFiles.count { pendingFile ->
+            val hasChoice = snippetChoices.any { it.sourceLocation.path == pendingFile }
+            if (hasChoice) {
+                logger.info { "File '$pendingFile' will not be added to pending files as it has a snippet choice." }
+            }
+            !hasChoice
+        }
 
         val issues = mutableListOf(
             Issue(
                 source = name,
-                message = "This scan has ${rawResults.listPendingFiles.size} file(s) pending identification in FossID.",
+                message = "This scan has $pendingFileCount file(s) pending identification in FossID.",
                 severity = Severity.HINT
             )
         )

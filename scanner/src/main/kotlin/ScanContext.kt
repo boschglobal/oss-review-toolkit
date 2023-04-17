@@ -24,6 +24,7 @@ import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageType
 import org.ossreviewtoolkit.model.config.Excludes
+import org.ossreviewtoolkit.model.config.PackageSnippetChoice
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
 import org.ossreviewtoolkit.utils.spdx.SpdxExpression
 
@@ -60,5 +61,10 @@ data class ScanContext(
      * The packages known to be covered in the context of this scan. For package scanners, this is the list of packages
      * that have the same provenance as the reference package.
      */
-    val coveredPackages: List<Package> = emptyList()
+    val coveredPackages: List<Package> = emptyList(),
+
+    /**
+     * The [PackageSnippetChoice] of the project to scan.
+     */
+    val packageSnippetChoices: List<PackageSnippetChoice> = emptyList()
 )

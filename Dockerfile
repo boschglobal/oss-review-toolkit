@@ -86,6 +86,8 @@ RUN groupadd --gid $USER_GID $USERNAME \
     --home-dir $HOMEDIR \
     --create-home $USERNAME
 
+RUN id ort
+
 RUN chgrp $USER /opt \
     && chmod g+wx /opt
 
@@ -111,6 +113,8 @@ ENTRYPOINT [ "/bin/bash" ]
 #------------------------------------------------------------------------
 # PYTHON - Build Python as a separate component with pyenv
 FROM ort-base-image as pythonbuild
+
+RUN id ort
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -167,6 +171,8 @@ COPY --from=pythonbuild /opt/python /opt/python
 # RUBY - Build Ruby as a separate component with rbenv
 FROM ort-base-image AS rubybuild
 
+RUN id ort
+
 # hadolint ignore=DL3004
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -201,6 +207,8 @@ COPY --from=rubybuild ${RBENV_ROOT} ${RBENV_ROOT}
 # NODEJS - Build NodeJS as a separate component with nvm
 FROM ort-base-image AS nodebuild
 
+RUN id ort
+
 ARG BOWER_VERSION=1.8.12
 ARG NODEJS_VERSION=18.14.2
 ARG NPM_VERSION=8.15.1
@@ -224,6 +232,8 @@ COPY --from=nodebuild ${NVM_DIR} ${NVM_DIR}
 # RUST - Build as a separate component
 FROM ort-base-image AS rustbuild
 
+RUN id ort
+
 ARG RUST_HOME=/opt/rust
 ARG CARGO_HOME=${RUST_HOME}/cargo
 ARG RUSTUP_HOME=${RUST_HOME}/rustup
@@ -236,6 +246,8 @@ COPY --from=rustbuild /opt/rust /opt/rust
 #------------------------------------------------------------------------
 # GOLANG - Build as a separate component
 FROM ort-base-image AS gobuild
+
+RUN id ort
 
 ARG GO_DEP_VERSION=0.5.4
 ARG GO_VERSION=1.20
@@ -253,6 +265,8 @@ COPY --from=gobuild /opt/go /opt/go
 #------------------------------------------------------------------------
 # HASKELL STACK
 FROM ort-base-image AS haskellbuild
+
+RUN id ort
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -274,6 +288,8 @@ COPY --from=haskellbuild ${HASKELL_HOME} ${HASKELL_HOME}
 #------------------------------------------------------------------------
 # REPO / ANDROID SDK
 FROM ort-base-image AS androidbuild
+
+RUN id ort
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -307,6 +323,8 @@ COPY --from=androidbuild ${ANDROID_HOME} ${ANDROID_HOME}
 #  Dart
 FROM ort-base-image AS dartbuild
 
+RUN id ort
+
 ARG DART_VERSION=2.18.4
 WORKDIR /opt/
 
@@ -327,6 +345,8 @@ COPY --from=dartbuild ${DART_SDK} ${DART_SDK}
 # SBT
 FROM ort-base-image AS sbtbuild
 
+RUN id ort
+
 ARG SBT_VERSION=1.6.1
 
 ENV SBT_HOME=/opt/sbt
@@ -340,6 +360,8 @@ COPY --from=sbtbuild ${DART_SDK} ${DART_SDK}
 #------------------------------------------------------------------------
 # ORT
 FROM ort-base-image as ortbuild
+
+RUN id ort
 
 # Set this to the version ORT should report.
 ARG ORT_VERSION="DOCKER-SNAPSHOT"
@@ -363,11 +385,13 @@ RUN --mount=type=cache,target=/var/tmp/gradle \
     && cp -a ${HOME}/src/ort/helper-cli/build/libs/helper-cli-*.jar /opt/ort/lib/
 
 FROM scratch AS ort
-COPY --from=ortbuild /opt/ort /opt/ort 
+COPY --from=ortbuild /opt/ort /opt/ort
 
 #------------------------------------------------------------------------
 # Components container
 FROM ort-base-image as components
+
+RUN id ort
 
 # Remove ort build scripts
 RUN [ -d /etc/scripts ] && sudo rm -rf /etc/scripts

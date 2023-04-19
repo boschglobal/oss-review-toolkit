@@ -41,6 +41,7 @@ import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.model.Snippet as OrtSnippet
 import org.ossreviewtoolkit.model.SnippetFinding
 import org.ossreviewtoolkit.model.TextLocation
+import org.ossreviewtoolkit.model.config.SnippetChoice
 import org.ossreviewtoolkit.model.createAndLogIssue
 import org.ossreviewtoolkit.model.mapLicense
 import org.ossreviewtoolkit.model.utils.PurlType
@@ -80,7 +81,9 @@ internal data class FindingsContainer(
 internal fun <T : Summarizable> List<T>.mapSummary(
     ignoredFiles: Map<String, IgnoredFile>,
     issues: MutableList<Issue>,
-    detectedLicenseMapping: Map<String, String>
+    detectedLicenseMapping: Map<String, String>,
+    snippetFindings: Set<SnippetFinding>,
+    snippetChoices: List<SnippetChoice>
 ): FindingsContainer {
     val licenseFindings = mutableSetOf<LicenseFinding>()
     val copyrightFindings = mutableSetOf<CopyrightFinding>()
@@ -110,6 +113,53 @@ internal fun <T : Summarizable> List<T>.mapSummary(
         summarizable.getCopyright().let {
             if (it.isNotEmpty()) {
                 copyrightFindings += CopyrightFinding(it, location)
+            }
+        }
+    }
+
+    licenseFindings += snippetChoices.mapNotNull { snippetChoice ->
+        val snippets = snippetFindings.filter {
+            it.sourceLocation == snippetChoice.sourceLocation
+        }
+
+        if (snippets.isEmpty()) {
+            logger.warn("Snippet choice's file ${snippetChoice.sourceLocation.path} is not in the snippet results")
+            issues += Issue(
+                source = "FossId",
+                message = "Snippet choice's file ${snippetChoice.sourceLocation.path} is not in the snippet results",
+                severity = Severity.WARNING
+            )
+            null
+        } else {
+            val chosenSnippet = snippets.flatMap { it.snippets }.firstOrNull { snippet ->
+                snippet.purl == snippetChoice.snippet
+            }
+
+            if (chosenSnippet == null) {
+                logger.warn("Snippet choice's snippet ${snippetChoice.snippet} is not in the snippet results")
+                issues += Issue(
+                    source = "FossId",
+                    message = "Snippet choice's snippet ${snippetChoice.snippet} is not in the snippet results",
+                    severity = Severity.WARNING
+                )
+                null
+            } else {
+                if (chosenSnippet.licenses != snippetChoice.license) {
+                    val message = "Snippet choice's license ${snippetChoice.license} is different from the actual" +
+                            " snippet license ${chosenSnippet.licenses}. Snippet choice cannot be used to" +
+                            " change snippet license."
+                    logger.error(message)
+                    issues += Issue(
+                        source = "FossId",
+                        message = message,
+                        severity = Severity.ERROR
+                    )
+                }
+                logger.info {
+                    "Adding snippet choice for '${snippetChoice.sourceLocation.path}' with license" +
+                            " ${chosenSnippet.licenses} to the license findings"
+                }
+                LicenseFinding(chosenSnippet.licenses, snippetChoice.sourceLocation)
             }
         }
     }

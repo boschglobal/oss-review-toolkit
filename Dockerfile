@@ -136,12 +136,12 @@ RUN curl -kSs https://pyenv.run | bash \
     && pyenv install -v ${PYTHON_VERSION} \
     && pyenv global ${PYTHON_VERSION}
 
-ARG CONAN_VERSION=1.57.0
-ARG PYTHON_INSPECTOR_VERSION=0.9.6
+ARG CONAN_VERSION=1.54.0
+ARG PYTHON_INSPECTOR_VERSION=0.9.4
 ARG PYTHON_PIPENV_VERSION=2022.9.24
 ARG PYTHON_POETRY_VERSION=1.2.2
 ARG PIPTOOL_VERSION=22.2.2
-ARG SCANCODE_VERSION=31.2.4
+ARG SCANCODE_VERSION=31.2.1
 
 RUN pip install --no-cache-dir -U \
     pip=="${PIPTOOL_VERSION}" \
@@ -238,7 +238,7 @@ COPY --from=rustbuild /opt/rust /opt/rust
 FROM ort-base-image AS gobuild
 
 ARG GO_DEP_VERSION=0.5.4
-ARG GO_VERSION=1.20.3
+ARG GO_VERSION=1.20
 ENV GOBIN=/opt/go/bin
 ENV PATH=$PATH:/opt/go/bin
 
@@ -282,7 +282,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     unzip \
     && sudo rm -rf /var/lib/apt/lists/*
 
-ARG ANDROID_CMD_VERSION=9477386
+ARG ANDROID_CMD_VERSION=8512546
 ENV ANDROID_HOME=/opt/android-sdk
 
 RUN --mount=type=tmpfs,target=/android \
@@ -290,7 +290,6 @@ RUN --mount=type=tmpfs,target=/android \
     && curl -Os https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMD_VERSION}_latest.zip \
     && unzip -q commandlinetools-linux-${ANDROID_CMD_VERSION}_latest.zip -d $ANDROID_HOME \
     && PROXY_HOST_AND_PORT=${https_proxy#*://} \
-    && PROXY_HOST_AND_PORT=${PROXY_HOST_AND_PORT%/} \
     && if [ -n "$PROXY_HOST_AND_PORT" ]; then \
         # While sdkmanager uses HTTPS by default, the proxy type is still called "http".
         SDK_MANAGER_PROXY_OPTIONS="--proxy=http --proxy_host=${PROXY_HOST_AND_PORT%:*} --proxy_port=${PROXY_HOST_AND_PORT##*:}"; \
@@ -379,17 +378,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends \
         php \
         subversion \
-        # dotnet requirements
-        libc6 \
-        libgcc1 \
-        libgcc-s1 \
-        libgssapi-krb5-2 \
-        libicu70 \
-        liblttng-ust1 \
-        libssl3 \
-        libstdc++6 \
-        libunwind8 \
-        zlib1g \
     && sudo rm -rf /var/lib/apt/lists/*
 
 # Python
@@ -450,24 +438,6 @@ ARG COMPOSER_VERSION=2.2
 ENV PATH=$PATH:/opt/php/bin
 RUN mkdir -p /opt/php/bin \
     && curl -ksS https://getcomposer.org/installer | php -- --install-dir=/opt/php/bin --filename=composer --$COMPOSER_VERSION
-
-# nuget-inspector
-ENV NUGET_INSPECTOR_ROOT=/opt/nuget-inspector
-ENV NUGET_INSPECTOR_HOME=$NUGET_INSPECTOR_ROOT/bin
-ENV NUGET_DOTNET_HOME=$NUGET_INSPECTOR_ROOT/dotnet
-
-ENV PATH=$PATH:$NUGET_DOTNET_HOME:$NUGET_DOTNET_HOME/tools:$NUGET_INSPECTOR_HOME
-
-# Note: We are not installing a dotnet package directly because
-# debian packages from Ubuntu and Microsoft are incomplete
-RUN mkdir -p $NUGET_DOTNET_HOME \
-    && curl --location https://aka.ms/dotnet/6.0/dotnet-sdk-linux-x64.tar.gz \
-    | tar -C $NUGET_DOTNET_HOME -xz
-
-ARG NUGET_INSPECTOR_VERSION=0.9.12
-RUN mkdir -p $NUGET_INSPECTOR_HOME \
-    && curl -L https://github.com/nexB/nuget-inspector/releases/download/v${NUGET_INSPECTOR_VERSION}/nuget-inspector-v${NUGET_INSPECTOR_VERSION}-linux-x64.tar.gz \
-    | tar --strip-components=1 -C $NUGET_INSPECTOR_HOME -xz
 
 ENTRYPOINT ["/bin/bash"]
 

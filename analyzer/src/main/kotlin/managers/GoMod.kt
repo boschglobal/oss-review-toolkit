@@ -86,7 +86,7 @@ class GoMod(
 
     private val environment by lazy {
         mapOf(
-            "GOPROXY" to "direct",
+            // "GOPROXY" to "direct",
             "GOPATH" to goPath.absolutePath
         )
     }

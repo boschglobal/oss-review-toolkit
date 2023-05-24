@@ -54,7 +54,7 @@ class ProjectSortedSetConverter : StdConverter<Set<Project>, SortedSet<Project>>
 }
 
 class ScopeSortedSetConverter : StdConverter<Set<Scope>, SortedSet<Scope>>() {
-    override fun convert(value: Set<Scope>) = value.toSortedSet(compareBy { it.name })
+    override fun convert(value: Set<Scope>) = value.toSortedSet()
 }
 
 class SnippetFindingSortedSetConverter : StdConverter<Set<SnippetFinding>, SortedSet<SnippetFinding>>() {

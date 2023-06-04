@@ -73,6 +73,7 @@ import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.model.UnknownProvenance
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
+import org.ossreviewtoolkit.model.config.FalsePositiveSnippet
 import org.ossreviewtoolkit.model.config.SnippetChoice
 import org.ossreviewtoolkit.model.createAndLogIssue
 import org.ossreviewtoolkit.scanner.PackageScannerWrapper
@@ -315,12 +316,13 @@ class FossId internal constructor(
                             it.provenanceUrl == provenance.vcsInfo.url
                         }
                         val snippetChoices = packageSnippetChoice?.snippetChoices.orEmpty()
+                        val falsePositives = packageSnippetChoice?.falsePositives.orEmpty()
 
                         logger.info {
                             "Repository ${provenance.vcsInfo.url} has ${snippetChoices.size} snippet choice(s)."
                         }
 
-                        val rawResults = getRawResults(scanCode)
+                        val rawResults = getRawResults(scanCode, snippetChoices, falsePositives)
                         createResultSummary(
                             startTime,
                             provenance,
@@ -801,7 +803,11 @@ class FossId internal constructor(
     /**
      * Get the different kind of results from the scan with [scanCode]
      */
-    private suspend fun getRawResults(scanCode: String): RawResults {
+    private suspend fun getRawResults(
+        scanCode: String,
+        snippetChoices: List<SnippetChoice>,
+        falsePositives: List<FalsePositiveSnippet>
+    ): RawResults {
         val identifiedFiles = service.listIdentifiedFiles(config.user, config.apiKey, scanCode)
             .checkResponse("list identified files")
             .data!!
@@ -838,10 +844,38 @@ class FossId internal constructor(
                     }
                     logger.info { "${snippets.size} snippets." }
 
+                    val excludedMatchTypes = enumSetOf(MatchType.IGNORED, MatchType.NONE)
+                    // Remove snippet choice and false positives from the snippets
+                    val filteredSnippets = snippets.filterNot { it.matchType in excludedMatchTypes }
+                        .filterTo(mutableSetOf()) { snippet ->
+                            val url = checkNotNull(snippet.url) {
+                                "The URL of snippet ${snippet.id} must not be null."
+                            }
+
+                            val purl = snippet.purl ?: ("pkg:" +
+                                    "${urlToPackageType(url)}/${snippet.author}/${snippet.artifact}@${snippet.version}")
+
+                            val falsePositive = falsePositives.firstOrNull { falsePositive ->
+                                falsePositive.snippet == purl && falsePositive.path == it
+                            }?.let {
+                                logger.info {
+                                    "Ignoring snippet '$purl' for file '${it.path}', as it is a false positive."
+                                }
+                            }
+                            val snippetChoice = snippetChoices.firstOrNull { snippetChoice ->
+                                snippetChoice.snippet == purl && snippetChoice.sourceLocation.path == it
+                            }?.let {
+                                logger.info {
+                                    "Ignoring snippet '$purl' for file '${it.sourceLocation.path}', as it is a chosen snippet."
+                                }
+                            }
+                            falsePositive == null && snippetChoice == null
+                        }
+
                     if (config.fetchSnippetMatchedLines) {
                         logger.info { "Listing snippet matched lines for $it..." }
 
-                        snippets.filter { it.matchType == MatchType.PARTIAL }.map { snippet ->
+                        filteredSnippets.filter { it.matchType == MatchType.PARTIAL }.map { snippet ->
                             val matchedLinesResponse =
                                 service.listMatchedLines(config.user, config.apiKey, scanCode, it, snippet.id)
                                     .checkResponse("list snippets matched lines")
@@ -852,8 +886,7 @@ class FossId internal constructor(
                         }
                     }
 
-                    val excludedMatchTypes = enumSetOf(MatchType.IGNORED, MatchType.NONE)
-                    it to snippets.filterNotTo(mutableSetOf()) { it.matchType in excludedMatchTypes }
+                    it to filteredSnippets
                 }
             }.awaitAll().toMap()
         }

@@ -252,7 +252,7 @@ internal fun mapSnippetFindings(rawResults: RawResults, issues: MutableList<Issu
 /**
  * Return the [PurlType] as determined from the given [url], or [PurlType.GENERIC] if there is no match.
  */
-private fun urlToPackageType(url: String): PurlType =
+internal fun urlToPackageType(url: String): PurlType =
     when (val provider = PackageProvider.get(url)) {
         PackageProvider.COCOAPODS -> PurlType.COCOAPODS
         PackageProvider.CRATES_IO -> PurlType.CARGO

@@ -184,6 +184,28 @@
               },
               "required": ["sourceLocation", "reasoning", "license", "snippet"]
             }
+          },
+          "false_positives": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "reasoning": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "snippet": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reasoning",
+                "path",
+                "snippet"
+              ]
+            }
           }
         },
         "required" : ["provenanceUrl", "snippet_choices"]

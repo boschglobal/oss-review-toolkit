@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 Bosch.IO GmbH
+ * Copyright (C) 2023 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,21 +19,19 @@
 
 package org.ossreviewtoolkit.model.config
 
-import org.ossreviewtoolkit.model.RepositoryProvenance
-
-data class PackageSnippetChoice(
+data class FalsePositiveSnippet(
     /**
-     * The URL of the [RepositoryProvenance] this snippet choice applies to.
+     * The reason why this snippet is a false positive.
      */
-    val provenanceUrl: String,
+    val reasoning: String,
 
     /**
-     * The snippet choices for this package.
+     *  The source file path having a false positive snippet.
      */
-    val snippetChoices: List<SnippetChoice>,
+    val path: String,
 
     /**
-     * The list of snippet that are false positives.
+     *  The purl of the snippet that is a false positive, for the given source file.
      */
-    val falsePositives: List<FalsePositiveSnippet> = emptyList()
+    val snippet: String
 )

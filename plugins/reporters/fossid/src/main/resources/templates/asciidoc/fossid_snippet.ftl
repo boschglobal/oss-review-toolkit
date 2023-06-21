@@ -76,12 +76,12 @@ License(s):
 |===
 | Source Location | pURL | License | File | URL | Score | Release Date
 
-.${snippetCount}+|
+.${snippetCount*2}+|
 [#if helper.isFullFileLocation(sourceLocation)]
 Full match
 [#else]
 Partial match +
-${sourceLocation.startLine}-${sourceLocation.endLine}
+${sourceLocation.startLine?c}-${sourceLocation.endLine?c}
 [/#if]
 
 [#list snippetFinding.snippets as snippet ]
@@ -94,6 +94,39 @@ ${sourceLocation.startLine}-${sourceLocation.endLine}
 | ${snippet.purl!""}
 | ${snippet.licenses!""} | ${snippetFilePath} | ${snippet.provenance.sourceArtifact.url!""}[URL]
 | ${snippet.score!""} | ${snippet.additionalData["releaseDate"]}
+6+a|
+.Create a snippet choice for this snippet or mark it as false positive
+[%collapsible]
+====
+Add the following lines to the *.ort.yml* file.
+
+To **choose** this snippet:
+[source,yaml]
+--
+package_snippet_choices:
+  - provenance_url: "${scanResult.provenance.vcsInfo.url}"
+    snippet_choices:
+      - license: "${snippet.licenses!""}"
+        reasoning: "Explain why this snippet choice was made"
+        source_location:
+          path: "${filePath}"
+          start_line: ${snippetFinding.sourceLocation.startLine?c}
+          end_line: ${snippetFinding.sourceLocation.endLine?c}
+        snippet: "${snippet.purl!""}"
+--
+Or to mark this location has having ONLY **false positives snippets**:
+[source,yaml]
+--
+package_snippet_choices:
+  - provenance_url: "${scanResult.provenance.vcsInfo.url}"
+    locations_with_false_positives:
+      - reasoning: "Explain why this location has only false positives snippets"
+        source_location:
+          path: "${filePath}"
+          start_line: ${snippetFinding.sourceLocation.startLine?c}
+          end_line: ${snippetFinding.sourceLocation.endLine?c}
+--
+====
 [/#list]
 |===
 [/#list]

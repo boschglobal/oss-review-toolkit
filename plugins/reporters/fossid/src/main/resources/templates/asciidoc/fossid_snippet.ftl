@@ -94,6 +94,37 @@ ${sourceLocation.startLine}-${sourceLocation.endLine}
 | ${snippet.purl!""}
 | ${snippet.licenses!""} | ${snippetFilePath} | ${snippet.provenance.sourceArtifact.url!""}[URL]
 | ${snippet.score!""} | ${snippet.additionalData["releaseDate"]}
+7+a|
+.Create a snippet choice for this snippet or mark it as false positive
+[%collapsible]
+====
+Add the following lines to the *.ort.yml* file.
+
+To **choose** this snippet:
+[source,yaml]
+--
+package_snippet_choices:
+  - provenance_url: "${scanResult.provenance.vcsInfo.url}"
+    snippet_choices:
+      - license: "${snippet.licenses!""}"
+        reasoning: "Explain why this snippet choice was made"
+        source_location:
+          path: "${filePath}"
+          start_line: ${snippetFinding.sourceLocation.startLine}
+          end_line: ${snippetFinding.sourceLocation.endLine}
+        snippet: "${snippet.purl!""}"
+--
+Or to mark is as a **false positive**:
+[source,yaml]
+--
+package_snippet_choices:
+  - provenance_url: "${scanResult.provenance.vcsInfo.url}"
+    false_positives:
+      - reasoning: "Explain why this snippet is a false positive"
+        path: "${filePath}"
+        snippet: "${snippet.purl!""}"
+--
+====
 [/#list]
 |===
 [/#list]

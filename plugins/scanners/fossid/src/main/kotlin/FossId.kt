@@ -220,7 +220,7 @@ class FossId internal constructor(
                     data
                 }
 
-                error == "Project does not exist" && status == 0 -> {
+                error?.startsWith("Project does not exist") ?: false && status == 0 -> {
                     logger.info { "Project '$projectCode' does not exist." }
                     null
                 }

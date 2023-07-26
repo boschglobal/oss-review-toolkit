@@ -225,7 +225,7 @@ class FossId internal constructor(
                     null
                 }
 
-                else -> throw IOException("Could not get project. Additional information : $error")
+                else -> throw IOException("Could not get project. Additional information: $error")
             }
         }
 

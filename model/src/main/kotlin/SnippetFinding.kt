@@ -26,9 +26,9 @@ package org.ossreviewtoolkit.model
  */
 data class SnippetFinding(
     /**
-     * The text location in the scanned source file where the snippet has matched.
+     * The text locations in the scanned source file where the snippet has matched.
      */
-    val sourceLocation: TextLocation,
+    val sourceLocation: TextWithMultipleLocations,
 
     /**
      * The corresponding snippet.

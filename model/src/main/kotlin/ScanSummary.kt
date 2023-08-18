@@ -119,6 +119,10 @@ data class ScanSummary(
             this.path.startsWith("$filterPath/") || this.path in applicableLicenseFiles
         }
 
+        fun TextWithMultipleLocations.matchesPaths() = paths.any { filterPath ->
+            this.path.startsWith("$filterPath/") || this.path in applicableLicenseFiles
+        }
+
         return copy(
             licenseFindings = licenseFindings.filterTo(mutableSetOf()) { it.location.matchesPaths() },
             copyrightFindings = copyrightFindings.filterTo(mutableSetOf()) { it.location.matchesPaths() },

@@ -31,6 +31,7 @@ import org.ossreviewtoolkit.model.ScanSummary
 import org.ossreviewtoolkit.model.Snippet
 import org.ossreviewtoolkit.model.SnippetFinding
 import org.ossreviewtoolkit.model.TextLocation
+import org.ossreviewtoolkit.model.TextWithMultipleLocations
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.utils.spdx.SpdxConstants
@@ -59,7 +60,7 @@ internal fun generateSummary(
             if (scanResponse.id == IdentificationType.SNIPPET) {
                 val file = requireNotNull(scanResponse.file)
                 val lines = requireNotNull(scanResponse.lines)
-                val sourceLocation = convertLines(file, lines)
+                val sourceLocation = TextWithMultipleLocations(convertLines(file, lines))
                 val snippets = getSnippets(scanResponse)
 
                 snippets.forEach {

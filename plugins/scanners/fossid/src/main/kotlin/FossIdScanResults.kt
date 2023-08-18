@@ -31,12 +31,14 @@ import org.ossreviewtoolkit.model.CopyrightFinding
 import org.ossreviewtoolkit.model.Hash
 import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.LicenseFinding
+import org.ossreviewtoolkit.model.LineRange
 import org.ossreviewtoolkit.model.PackageProvider
 import org.ossreviewtoolkit.model.RemoteArtifact
 import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.model.Snippet as OrtSnippet
 import org.ossreviewtoolkit.model.SnippetFinding
 import org.ossreviewtoolkit.model.TextLocation
+import org.ossreviewtoolkit.model.TextWithMultipleLocations
 import org.ossreviewtoolkit.model.createAndLogIssue
 import org.ossreviewtoolkit.model.utils.PurlType
 import org.ossreviewtoolkit.utils.common.collapseToRanges
@@ -144,7 +146,7 @@ internal fun mapSnippetFindings(
                 FossId.SNIPPET_DATA_RELEASE_DATE to snippet.releaseDate.orEmpty()
             )
 
-            var sourceLocation: TextLocation? = null
+            var sourceLocation: TextWithMultipleLocations? = null
             var snippetLocation: TextLocation? = null
 
             if (snippet.matchType == MatchType.PARTIAL) {
@@ -152,8 +154,12 @@ internal fun mapSnippetFindings(
                 val rawMatchedLinesSourceFile = rawMatchedLines?.localFile.orEmpty().collapseToRanges()
                 val rawMatchedLinesSnippetFile = rawMatchedLines?.mirrorFile.orEmpty().collapseToRanges()
 
-                sourceLocation = rawMatchedLinesSourceFile.firstOrNull()
-                    ?.let { (startLine, endLine) -> TextLocation(file, startLine, endLine) }
+                if (rawMatchedLinesSourceFile.isNotEmpty()) {
+                    val lineRanges = rawMatchedLinesSourceFile.map { (first, second) ->
+                        LineRange(first, second)
+                    }.toSet()
+                    sourceLocation = TextWithMultipleLocations(file, lineRanges)
+                }
                 snippetLocation = rawMatchedLinesSnippetFile.firstOrNull()
                     ?.let { (startLine, endLine) -> TextLocation(snippet.file, startLine, endLine) }
 
@@ -178,7 +184,7 @@ internal fun mapSnippetFindings(
             )
 
             SnippetFinding(
-                sourceLocation ?: TextLocation(file, TextLocation.UNKNOWN_LINE),
+                sourceLocation ?: TextWithMultipleLocations(file, LineRange(TextLocation.UNKNOWN_LINE)),
                 ortSnippet
             )
         }

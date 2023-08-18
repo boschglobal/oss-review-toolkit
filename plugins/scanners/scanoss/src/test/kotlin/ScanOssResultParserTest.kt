@@ -36,10 +36,12 @@ import org.ossreviewtoolkit.clients.scanoss.FullScanResponse
 import org.ossreviewtoolkit.clients.scanoss.ScanOssService
 import org.ossreviewtoolkit.model.CopyrightFinding
 import org.ossreviewtoolkit.model.LicenseFinding
+import org.ossreviewtoolkit.model.LineRange
 import org.ossreviewtoolkit.model.RepositoryProvenance
 import org.ossreviewtoolkit.model.Snippet
 import org.ossreviewtoolkit.model.SnippetFinding
 import org.ossreviewtoolkit.model.TextLocation
+import org.ossreviewtoolkit.model.TextWithMultipleLocations
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.utils.spdx.SpdxExpression
@@ -114,7 +116,10 @@ class ScanOssResultParserTest : WordSpec({
             summary.snippetFindings shouldHaveSize (1)
             summary.snippetFindings.shouldContainExactly(
                 SnippetFinding(
-                    TextLocation("src/main/java/com/vdurmont/semver4j/Requirement.java", 1, 710),
+                    TextWithMultipleLocations(
+                        "src/main/java/com/vdurmont/semver4j/Requirement.java",
+                        LineRange(1, 710)
+                    ),
                     Snippet(
                         98.0f,
                         TextLocation(

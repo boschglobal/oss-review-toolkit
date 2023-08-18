@@ -35,11 +35,13 @@ import java.io.File
 import java.util.UUID
 
 import org.ossreviewtoolkit.model.LicenseFinding
+import org.ossreviewtoolkit.model.LineRange
 import org.ossreviewtoolkit.model.PackageType
 import org.ossreviewtoolkit.model.RepositoryProvenance
 import org.ossreviewtoolkit.model.Snippet
 import org.ossreviewtoolkit.model.SnippetFinding
 import org.ossreviewtoolkit.model.TextLocation
+import org.ossreviewtoolkit.model.TextWithMultipleLocations
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.DownloaderConfiguration
@@ -110,7 +112,7 @@ class ScanOssScannerDirectoryTest : StringSpec({
 
             snippetFindings.shouldContainExactly(
                 SnippetFinding(
-                    TextLocation("utils/src/main/kotlin/ArchiveUtils.kt", 1, 240),
+                    TextWithMultipleLocations("utils/src/main/kotlin/ArchiveUtils.kt", LineRange(1, 240)),
                     Snippet(
                         99.0f,
                         TextLocation(

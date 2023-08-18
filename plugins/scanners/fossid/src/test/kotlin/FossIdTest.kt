@@ -21,6 +21,7 @@ package org.ossreviewtoolkit.plugins.scanners.fossid
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.WordSpec
+import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
@@ -89,6 +90,7 @@ import org.ossreviewtoolkit.model.Hash
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.LicenseFinding
+import org.ossreviewtoolkit.model.LineRange
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageType
 import org.ossreviewtoolkit.model.RemoteArtifact
@@ -97,6 +99,7 @@ import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.model.Snippet as OrtSnippet
 import org.ossreviewtoolkit.model.SnippetFinding
 import org.ossreviewtoolkit.model.TextLocation
+import org.ossreviewtoolkit.model.TextWithMultipleLocations
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.Excludes
@@ -411,8 +414,8 @@ class FossIdTest : WordSpec({
 
             summary.snippetFindings shouldHaveSize 1
             summary.snippetFindings.first() shouldNotBeNull {
-                sourceLocation.startLine shouldBe(1)
-                sourceLocation.endLine shouldBe(3)
+                sourceLocation.lines shouldHaveSize 3
+                sourceLocation.lines shouldContainExactly setOf(LineRange(1, 3), LineRange(21, 22), LineRange(36))
                 snippet.location.startLine shouldBe 11
                 snippet.location.endLine shouldBe 12
                 snippet.additionalData[FossId.SNIPPET_DATA_MATCHED_LINE_SOURCE] shouldBe "1-3, 21-22, 36"
@@ -1414,7 +1417,7 @@ private fun createSnippet(index: Int): Snippet = Snippet(
  */
 private fun createSnippetFindings(index: Int): Set<SnippetFinding> = (1..5).map { snippetIndex ->
     SnippetFinding(
-        TextLocation("/pending/file/$index", TextLocation.UNKNOWN_LINE),
+        TextWithMultipleLocations("/pending/file/$index", LineRange(TextLocation.UNKNOWN_LINE)),
         OrtSnippet(
             snippetIndex.toFloat(),
             TextLocation("file$snippetIndex", TextLocation.UNKNOWN_LINE),

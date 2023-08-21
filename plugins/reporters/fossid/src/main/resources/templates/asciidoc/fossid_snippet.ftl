@@ -53,18 +53,26 @@ End time : ${summary.startTime} +
     [/#if]
 [/#if]
 
-[#assign snippets = helper.groupSnippetsByFile(summary.snippetFindings)]
+[#list summary.snippetFindings as snippetFinding ]
+[#assign filePath = snippetFinding.sourceLocation.path]
 
-[#list snippets as filePath, snippetFindings]
 [#if gitRepoUrl?? && gitRepoUrl?contains("github.com")]
   [#assign localFileURL = '_${githubBaseURL}/${filePath}[source]_']
 [#else]
   [#assign localFileURL = "_source_"]
 [/#if]
 
-[#assign licenses = helper.collectLicenses(snippetFindings)]
+[#assign licenses = helper.collectLicenses(snippetFinding.snippets)]
 
 *${filePath}* +
+Source file location:
+[#if helper.isFullFileLocation(snippetFinding.sourceLocation)]
+Full file
+[#else]
+[#list snippetFinding.sourceLocation.lines as line]
+    ${line.startLine}-${line.endLine}[#sep],
+[/#list]
+[/#if] +
 License(s):
 [#list licenses as license]
   ${license}[#sep],
@@ -75,8 +83,7 @@ License(s):
 |===
 | Match | pURL | License | File | URL | Score | Release Date
 
-[#list snippetFindings as snippetFinding ]
-[#assign snippet = snippetFinding.snippet]
+[#list snippetFinding.snippets as snippet ]
 [#assign matchType = snippet.additionalData["matchType"]]
 | ${matchType} | ${snippet.purl!""}
 | ${snippet.licenses!""} | ${snippet.location.path!""} | ${snippet.provenance.sourceArtifact.url!""}[URL]

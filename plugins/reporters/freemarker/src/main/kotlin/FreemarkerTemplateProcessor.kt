@@ -35,11 +35,13 @@ import org.ossreviewtoolkit.model.AdvisorResult
 import org.ossreviewtoolkit.model.AdvisorResultFilter
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.Issue
+import org.ossreviewtoolkit.model.LineRange
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.RuleViolation
 import org.ossreviewtoolkit.model.Severity
-import org.ossreviewtoolkit.model.SnippetFinding
+import org.ossreviewtoolkit.model.Snippet
+import org.ossreviewtoolkit.model.TextWithMultipleLocations
 import org.ossreviewtoolkit.model.Vulnerability
 import org.ossreviewtoolkit.model.VulnerabilityReference
 import org.ossreviewtoolkit.model.config.RuleViolationResolution
@@ -312,18 +314,21 @@ class FreemarkerTemplateProcessor(
             vulnerabilities.filterNot { input.resolutionProvider.isResolved(it) }
 
         /**
-         * Return a list of [SnippetFinding]s grouped by the source file being matched by those snippets.
+         * Return a flag if the given [sourceLocation] refers to the full source file.
          */
         @Suppress("UNUSED") // This function is used in the templates.
-        fun groupSnippetsByFile(snippetFindings: Collection<SnippetFinding>): Map<String, List<SnippetFinding>> =
-            snippetFindings.groupBy { it.sourceLocation.path }
+        fun isFullFileLocation(sourceLocation: TextWithMultipleLocations) =
+            sourceLocation.lines.size == 1 && sourceLocation.lines.first() == LineRange(
+                TextWithMultipleLocations.UNKNOWN_LINE,
+                TextWithMultipleLocations.UNKNOWN_LINE
+            )
 
         /**
-         * Collect all the licenses present in a collection of [SnippetFinding]s.
+         * Collect all the licenses present in a collection of [Snippet]s.
          */
         @Suppress("UNUSED") // This function is used in the templates.
-        fun collectLicenses(snippetFindings: Collection<SnippetFinding>): Set<String> =
-            snippetFindings.flatMapTo(mutableSetOf()) { it.snippets.map { snippet -> snippet.licenses.toString() } }
+        fun collectLicenses(snippets: Collection<Snippet>): Set<String> =
+            snippets.map { snippet -> snippet.licenses.toString() }.toSet()
 
         /**
          * Return a flag indicating that issues have been encountered during the run of an advisor with the given

@@ -113,18 +113,20 @@ class ScanOssScannerDirectoryTest : StringSpec({
             snippetFindings.shouldContainExactly(
                 SnippetFinding(
                     TextWithMultipleLocations("utils/src/main/kotlin/ArchiveUtils.kt", LineRange(1, 240)),
-                    Snippet(
-                        99.0f,
-                        TextLocation(
-                            "https://osskb.org/api/file_contents/871fb0c5188c2f620d9b997e225b0095",
-                            128,
-                            367
-                        ),
-                        RepositoryProvenance(
-                            VcsInfo(VcsType.UNKNOWN, "https://github.com/scanoss/ort", ""), "."
-                        ),
-                        "pkg:github/scanoss/ort",
-                        SpdxExpression.parse("Apache-2.0")
+                    setOf(
+                        Snippet(
+                            99.0f,
+                            TextLocation(
+                                "https://osskb.org/api/file_contents/871fb0c5188c2f620d9b997e225b0095",
+                                128,
+                                367
+                            ),
+                            RepositoryProvenance(
+                                VcsInfo(VcsType.UNKNOWN, "https://github.com/scanoss/ort", ""), "."
+                            ),
+                            "pkg:github/scanoss/ort",
+                            SpdxExpression.parse("Apache-2.0")
+                        )
                     )
                 )
             )

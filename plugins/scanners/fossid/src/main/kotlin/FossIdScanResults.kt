@@ -118,7 +118,9 @@ internal fun mapSnippetFindings(
     issues: MutableList<Issue>
 ): Set<SnippetFinding> {
     return rawResults.listSnippets.flatMap { (file, rawSnippets) ->
-        rawSnippets.map { snippet ->
+        val findings = mutableMapOf<TextWithMultipleLocations, MutableSet<OrtSnippet>>()
+
+        rawSnippets.forEach { snippet ->
             val license = snippet.artifactLicense?.let {
                 DeclaredLicenseProcessor.process(it).also { expression ->
                     if (expression == null) {
@@ -183,11 +185,12 @@ internal fun mapSnippetFindings(
                 additionalSnippetData
             )
 
-            SnippetFinding(
-                sourceLocation ?: TextWithMultipleLocations(file, LineRange(TextLocation.UNKNOWN_LINE)),
-                ortSnippet
-            )
+            val finalSourceLocation =
+                sourceLocation ?: TextWithMultipleLocations(file, LineRange(TextLocation.UNKNOWN_LINE))
+            findings.getOrPut(finalSourceLocation) { mutableSetOf(ortSnippet) } += ortSnippet
         }
+
+        findings.map { SnippetFinding(it.key, it.value) }
     }.toSet()
 }
 

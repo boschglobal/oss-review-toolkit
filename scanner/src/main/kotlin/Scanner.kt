@@ -376,6 +376,14 @@ class Scanner(
                 // Filter the scan context to hide the excludes from scanner with scan criteria.
                 val filteredContext = if (scanner.criteria == null) context else context.copy(excludes = null)
                 val scanResult = scanner.scanPackage(referencePackage, filteredContext)
+                val scanResultWithMappedLicenses = scanResult.copy(
+                    summary = scanResult.summary.copy(
+                        licenseFindings = scanResult.summary.licenseFindings.mapTo(mutableSetOf()) {
+                            val licenseString = it.license.toString()
+                            it.copy(license = licenseString.mapLicense(scannerConfig.detectedLicenseMapping).toSpdx())
+                        }
+                    )
+                )
 
                 logger.info {
                     "Scan of '${referencePackage.id.toCoordinates()}' with package scanner '${scanner.name}' finished."
@@ -383,7 +391,8 @@ class Scanner(
 
                 packagesWithIncompleteScanResult.forEach processResults@{ pkg ->
                     val nestedProvenance = controller.getNestedProvenance(pkg.id) ?: return@processResults
-                    val nestedProvenanceScanResult = scanResult.toNestedProvenanceScanResult(nestedProvenance)
+                    val nestedProvenanceScanResult =
+                        scanResultWithMappedLicenses.toNestedProvenanceScanResult(nestedProvenance)
                     controller.addNestedScanResult(scanner, nestedProvenanceScanResult)
 
                     // TODO: Run in coroutine.

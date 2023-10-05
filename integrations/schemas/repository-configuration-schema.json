@@ -184,6 +184,36 @@
               },
               "required": ["sourceLocation", "reasoning", "license", "snippet"]
             }
+          },
+          "locations_with_false_positives": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sourceLocation": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "lineStart": {
+                      "type": "integer"
+                    },
+                    "lineEnd": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["path", "lineStart", "lineEnd"]
+                },
+                "reasoning": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reasoning",
+                "sourceLocation"
+              ]
+            }
           }
         },
         "required" : ["provenanceUrl", "snippet_choices"]

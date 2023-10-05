@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2023 Bosch.IO GmbH
+ * Copyright (C) 2023 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,21 +19,20 @@
 
 package org.ossreviewtoolkit.model.config
 
-import org.ossreviewtoolkit.model.RepositoryProvenance
+import org.ossreviewtoolkit.model.TextLocation
 
-data class PackageSnippetChoice(
+/**
+ * When a [SnippetChoice] is made, all the other snippet are automatically false positives. When a file has only false
+ * positives, [LocationWithFalsePositives] can be used to mark all the matching snippets as false positives.
+ */
+data class LocationWithFalsePositives(
     /**
-     * The URL of the [RepositoryProvenance] this snippet choice applies to.
+     * The source file location having only false positives snippets.
      */
-    val provenanceUrl: String,
+    val sourceLocation: TextLocation,
 
     /**
-     * The snippet choices for this package.
+     * The reason why all the matching snippets are a false positive.
      */
-    val snippetChoices: List<SnippetChoice>,
-
-    /**
-     * The list of source files that are matched only by false positives snippets.
-     */
-    val locationsWithFalsePositives: List<LocationWithFalsePositives> = emptyList()
+    val reasoning: String
 )

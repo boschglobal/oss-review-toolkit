@@ -926,14 +926,20 @@ class FossId internal constructor(
         listPendingFiles: List<String>
     ) {
         val snippetChoices = packageSnippetChoice?.snippetChoices.orEmpty()
+        val locationsWithFalsePositives =
+            packageSnippetChoice?.locationsWithFalsePositives.orEmpty()
 
         runBlocking(Dispatchers.IO) {
-            val candidatePathsToMark = mutableListOf<String>()
+            val candidatePathsToMark = mutableListOf<Pair<Boolean, String>>()
             candidatePathsToMark += snippetChoices.map { it.sourceLocation.path }.distinct()
+                .map { true to it }
+            candidatePathsToMark += locationsWithFalsePositives.map { it.sourceLocation.path }.distinct()
+                .map { false to it }
 
             val requests = mutableListOf<Deferred<Any>>()
 
-            candidatePathsToMark.forEach { path ->
+            candidatePathsToMark.forEach { pair ->
+                val (isSnippetChoice, path) = pair
                 val hasNonChosenLocations = snippetFinding.any { path == it.sourceLocation.path }
 
                 if (!hasNonChosenLocations) {
@@ -941,9 +947,12 @@ class FossId internal constructor(
                         logger.info { "Not marking $path as it it not pending." }
                     } else {
                         logger.info {
-                            "Marking $path as identified as all its sourceLocations have chosen snippets."
+                            if (isSnippetChoice) {
+                                "Marking $path as identified as all its sourceLocations have chosen snippets."
+                            } else {
+                                "Marking $path as identified as it has only false positives snippets"
+                            }
                         }
-
                         requests += async {
                             service.markAsIdentified(config.user, config.apiKey, scanCode, path, false)
                         }

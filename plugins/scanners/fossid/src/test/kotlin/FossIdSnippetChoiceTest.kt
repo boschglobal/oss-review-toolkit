@@ -128,6 +128,7 @@ class FossIdSnippetChoiceTest : WordSpec({
                         2 to MatchedLines.create((20..30).toList(), (20..30).toList())
                     )
                 )
+                .expectMarkAsIdentified(scanCode, FILE_1)
 
             val snippetChoices = createPackageSnippetChoices(
                 vcsInfo.url,
@@ -343,6 +344,102 @@ class FossIdSnippetChoiceTest : WordSpec({
             coVerify {
                 service.markAsIdentified(USER, API_KEY, scanCode, FILE_1, any())
             }
+        }
+
+        "mark a file with only false positives for a given snippet location as identified" {
+            val projectCode = projectCode(PROJECT)
+            val scanCode = scanCode(PROJECT, null)
+            val config = createConfig(deltaScans = false, fetchSnippetMatchedLines = true)
+            val vcsInfo = createVcsInfo()
+            val scan = createScan(vcsInfo.url, "${vcsInfo.revision}_other", scanCode)
+            val pkgId = createIdentifier(index = 42)
+
+            val service = FossIdRestService.create(config.serverUrl)
+                .expectProjectRequest(projectCode)
+                .expectListScans(projectCode, listOf(scan))
+                .expectCheckScanStatus(scanCode, ScanStatus.FINISHED)
+                .expectCreateScan(projectCode, scanCode, vcsInfo, "")
+                .expectDownload(scanCode)
+                .mockFiles(
+                    scanCode,
+                    pendingFiles = listOf(FILE_1),
+                    snippets = listOf(
+                        createSnippet(0, FILE_1, PURL_1)
+                    ),
+                    matchedLines = mapOf(
+                        0 to MatchedLines.create((10..20).toList(), (10..20).toList())
+                    )
+                )
+                .expectMarkAsIdentified(scanCode, FILE_1)
+
+            val snippetChoices = createLocationWithFalsePositives(
+                vcsInfo.url,
+                LocationWithFalsePositives(
+                    TextLocation(FILE_1, 10, 20),
+                    ""
+                )
+            )
+            val fossId = createFossId(config)
+
+            val summary = fossId.scan(createPackage(pkgId, vcsInfo), packageSnippetChoices = snippetChoices).summary
+
+            summary.snippetFindings should beEmpty()
+            coVerify {
+                service.markAsIdentified(USER, API_KEY, scanCode, FILE_1, any())
+            }
+            summary.issues.filter { it.severity > Severity.HINT } should beEmpty()
+        }
+
+        "not mark a file with some false positives for a given snippet location as identified if other snippets exist" {
+            val projectCode = projectCode(PROJECT)
+            val scanCode = scanCode(PROJECT, null)
+            val config = createConfig(deltaScans = false, fetchSnippetMatchedLines = true)
+            val vcsInfo = createVcsInfo()
+            val scan = createScan(vcsInfo.url, "${vcsInfo.revision}_other", scanCode)
+            val pkgId = createIdentifier(index = 42)
+
+            val service = FossIdRestService.create(config.serverUrl)
+                .expectProjectRequest(projectCode)
+                .expectListScans(projectCode, listOf(scan))
+                .expectCheckScanStatus(scanCode, ScanStatus.FINISHED)
+                .expectCreateScan(projectCode, scanCode, vcsInfo, "")
+                .expectDownload(scanCode)
+                .mockFiles(
+                    scanCode,
+                    pendingFiles = listOf(FILE_1),
+                    snippets = listOf(
+                        createSnippet(0, FILE_1, PURL_1),
+                        createSnippet(1, FILE_1, PURL_2)
+                    ),
+                    matchedLines = mapOf(
+                        0 to MatchedLines.create((10..20).toList(), (10..20).toList()),
+                        1 to MatchedLines.create((20..30).toList(), (20..30).toList())
+                    )
+                )
+
+            val snippetChoices = createLocationWithFalsePositives(
+                vcsInfo.url,
+                LocationWithFalsePositives(
+                    TextLocation(FILE_1, 10, 20),
+                    ""
+                )
+            )
+            val fossId = createFossId(config)
+
+            val summary = fossId.scan(createPackage(pkgId, vcsInfo), packageSnippetChoices = snippetChoices).summary
+
+            summary.snippetFindings shouldHaveSize 1
+            summary.snippetFindings.first().apply {
+                sourceLocation.path shouldBe FILE_1
+                snippets shouldHaveSize 1
+                snippets.first().apply {
+                    purl shouldBe PURL_2
+                }
+            }
+            coVerify(inverse = true) {
+                service.markAsIdentified(USER, API_KEY, scanCode, FILE_1, any())
+            }
+            summary.issues.filter { it.severity > Severity.HINT } should beEmpty()
         }
     }
 })

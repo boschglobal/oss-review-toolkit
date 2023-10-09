@@ -27,6 +27,7 @@ import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
 
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
@@ -43,6 +44,7 @@ import org.ossreviewtoolkit.clients.fossid.listMarkedAsIdentifiedFiles
 import org.ossreviewtoolkit.clients.fossid.listMatchedLines
 import org.ossreviewtoolkit.clients.fossid.listPendingFiles
 import org.ossreviewtoolkit.clients.fossid.listSnippets
+import org.ossreviewtoolkit.clients.fossid.markAsIdentified
 import org.ossreviewtoolkit.clients.fossid.model.identification.markedAsIdentified.MarkedAsIdentifiedFile
 import org.ossreviewtoolkit.clients.fossid.model.result.MatchType
 import org.ossreviewtoolkit.clients.fossid.model.result.MatchedLines
@@ -297,6 +299,51 @@ class FossIdSnippetChoiceTest : WordSpec({
             }
             summary.issues.filter { it.severity > Severity.HINT } should beEmpty()
         }
+
+        "mark a file with all snippets chosen as identified" {
+            val projectCode = projectCode(PROJECT)
+            val scanCode = scanCode(PROJECT, null)
+            val config = createConfig(deltaScans = false, fetchSnippetMatchedLines = true)
+            val vcsInfo = createVcsInfo()
+            val scan = createScan(vcsInfo.url, "${vcsInfo.revision}_other", scanCode)
+            val pkgId = createIdentifier(index = 42)
+
+            val service = FossIdRestService.create(config.serverUrl)
+                .expectProjectRequest(projectCode)
+                .expectListScans(projectCode, listOf(scan))
+                .expectCheckScanStatus(scanCode, ScanStatus.FINISHED)
+                .expectCreateScan(projectCode, scanCode, vcsInfo, "")
+                .expectDownload(scanCode)
+                .mockFiles(
+                    scanCode,
+                    pendingFiles = listOf(FILE_1),
+                    snippets = listOf(
+                        createSnippet(0, FILE_1, PURL_1)
+                    ),
+                    matchedLines = mapOf(
+                        0 to MatchedLines.create((10..20).toList(), (10..20).toList())
+                    )
+                )
+                .expectMarkAsIdentified(scanCode, FILE_1)
+
+            val snippetChoices = createPackageSnippetChoices(
+                vcsInfo.url,
+                SnippetChoice(
+                    TextLocation(FILE_1, 10, 20),
+                    "",
+                    "MIT".toSpdx(),
+                    PURL_1
+                )
+            )
+            val fossId = createFossId(config)
+
+            val summary = fossId.scan(createPackage(pkgId, vcsInfo), packageSnippetChoices = snippetChoices).summary
+
+            summary.snippetFindings should beEmpty()
+            coVerify {
+                service.markAsIdentified(USER, API_KEY, scanCode, FILE_1, any())
+            }
+        }
     }
 })
 
@@ -337,6 +384,15 @@ fun FossIdServiceWithVersion.mockFiles(
         }
     }
 
+    return this
+}
+
+/**
+ * Prepare this service mock to expect a mark as identified call for the given [scanCode] and [path].
+ */
+fun FossIdServiceWithVersion.expectMarkAsIdentified(scanCode: String, path: String): FossIdServiceWithVersion {
+    coEvery { markAsIdentified(USER, API_KEY, scanCode, path, any()) } returns
+        EntityResponseBody(status = 1)
     return this
 }
 

@@ -27,6 +27,7 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toKotlinDuration
 
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -53,6 +54,7 @@ import org.ossreviewtoolkit.clients.fossid.listMatchedLines
 import org.ossreviewtoolkit.clients.fossid.listPendingFiles
 import org.ossreviewtoolkit.clients.fossid.listScansForProject
 import org.ossreviewtoolkit.clients.fossid.listSnippets
+import org.ossreviewtoolkit.clients.fossid.markAsIdentified
 import org.ossreviewtoolkit.clients.fossid.model.Project
 import org.ossreviewtoolkit.clients.fossid.model.Scan
 import org.ossreviewtoolkit.clients.fossid.model.result.MatchType
@@ -69,6 +71,7 @@ import org.ossreviewtoolkit.model.RepositoryProvenance
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.ScanSummary
 import org.ossreviewtoolkit.model.Severity
+import org.ossreviewtoolkit.model.SnippetFinding
 import org.ossreviewtoolkit.model.UnknownProvenance
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.PackageSnippetChoice
@@ -96,6 +99,7 @@ import org.ossreviewtoolkit.utils.ort.showStackTrace
  * Therefore it implements the [PackageScannerWrapper] interface for backward compatibility, even though FossID itself
  * gets a Git repository URL as input and would be a good match for [ProvenanceScannerWrapper].
  */
+@Suppress("LargeClass", "TooManyFunctions")
 class FossId internal constructor(
     override val name: String,
     private val config: FossIdConfig,
@@ -881,6 +885,12 @@ class FossId internal constructor(
         )
 
         val snippetFindings = mapSnippetFindings(rawResults, issues, packageSnippetChoice)
+        markFilesWithChosenSnippetsAsIdentified(
+            scanCode,
+            packageSnippetChoice,
+            snippetFindings,
+            rawResults.listPendingFiles
+        )
 
         val ignoredFiles = rawResults.listIgnoredFiles.associateBy { it.path }
 
@@ -903,5 +913,45 @@ class FossId internal constructor(
             summary,
             mapOf(SCAN_CODE_KEY to scanCode, SCAN_ID_KEY to scanId, SERVER_URL_KEY to config.serverUrl)
         )
+    }
+
+    /**
+     * Mark all the files having a snippet choice as identified, only if they have no non-chosen source location
+     * remaining.
+     */
+    private fun markFilesWithChosenSnippetsAsIdentified(
+        scanCode: String,
+        packageSnippetChoice: PackageSnippetChoice?,
+        snippetFinding: Set<SnippetFinding>,
+        listPendingFiles: List<String>
+    ) {
+        val snippetChoices = packageSnippetChoice?.snippetChoices.orEmpty()
+
+        runBlocking(Dispatchers.IO) {
+            val candidatePathsToMark = mutableListOf<String>()
+            candidatePathsToMark += snippetChoices.map { it.sourceLocation.path }.distinct()
+
+            val requests = mutableListOf<Deferred<Any>>()
+
+            candidatePathsToMark.forEach { path ->
+                val hasNonChosenLocations = snippetFinding.any { path == it.sourceLocation.path }
+
+                if (!hasNonChosenLocations) {
+                    if (listPendingFiles.none { path == it }) {
+                        logger.info { "Not marking $path as it it not pending." }
+                    } else {
+                        logger.info {
+                            "Marking $path as identified as all its sourceLocations have chosen snippets."
+                        }
+
+                        requests += async {
+                            service.markAsIdentified(config.user, config.apiKey, scanCode, path, false)
+                        }
+                    }
+                }
+            }
+
+            requests.awaitAll()
+        }
     }
 }

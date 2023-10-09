@@ -66,6 +66,7 @@ import org.ossreviewtoolkit.clients.fossid.model.status.ScanStatus
 import org.ossreviewtoolkit.clients.fossid.runScan
 import org.ossreviewtoolkit.downloader.VersionControlSystem
 import org.ossreviewtoolkit.model.Issue
+import org.ossreviewtoolkit.model.LicenseFinding
 import org.ossreviewtoolkit.model.Provenance
 import org.ossreviewtoolkit.model.RepositoryProvenance
 import org.ossreviewtoolkit.model.ScanResult
@@ -884,7 +885,13 @@ class FossId internal constructor(
             )
         )
 
-        val snippetFindings = mapSnippetFindings(rawResults, issues, packageSnippetChoice)
+        val snippetLicenseFindings = mutableSetOf<LicenseFinding>()
+        val snippetFindings = mapSnippetFindings(
+            rawResults,
+            issues,
+            packageSnippetChoice,
+            snippetLicenseFindings
+        )
         markFilesWithChosenSnippetsAsIdentified(
             scanCode,
             packageSnippetChoice,
@@ -901,7 +908,7 @@ class FossId internal constructor(
         val summary = ScanSummary(
             startTime = startTime,
             endTime = Instant.now(),
-            licenseFindings = licenseFindings,
+            licenseFindings = licenseFindings + snippetLicenseFindings,
             copyrightFindings = copyrightFindings,
             snippetFindings = snippetFindings,
             issues = issues + additionalIssues

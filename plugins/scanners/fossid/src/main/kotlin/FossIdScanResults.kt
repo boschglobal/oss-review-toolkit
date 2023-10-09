@@ -42,6 +42,7 @@ import org.ossreviewtoolkit.model.Snippet as OrtSnippet
 import org.ossreviewtoolkit.model.SnippetFinding
 import org.ossreviewtoolkit.model.TextLocation
 import org.ossreviewtoolkit.model.config.PackageSnippetChoice
+import org.ossreviewtoolkit.model.config.SnippetChoice
 import org.ossreviewtoolkit.model.createAndLogIssue
 import org.ossreviewtoolkit.model.mapLicense
 import org.ossreviewtoolkit.model.utils.PurlType
@@ -127,10 +128,12 @@ internal fun <T : Summarizable> List<T>.mapSummary(
 internal fun mapSnippetFindings(
     rawResults: RawResults,
     issues: MutableList<Issue>,
-    packageSnippetChoice: PackageSnippetChoice?
+    packageSnippetChoice: PackageSnippetChoice?,
+    snippetLicenseFindings: MutableSet<LicenseFinding>
 ): Set<SnippetFinding> {
     val snippetChoices = packageSnippetChoice?.snippetChoices.orEmpty()
     val locationsWithFalsePositives = packageSnippetChoice?.locationsWithFalsePositives.orEmpty()
+    val remainingSnippetChoices = snippetChoices.toMutableList()
 
     return rawResults.listSnippets.flatMap { (file, rawSnippets) ->
         val findings = mutableMapOf<TextLocation, MutableSet<OrtSnippet>>()
@@ -232,11 +235,50 @@ internal fun mapSnippetFindings(
                 if (!isSnippetChoice && !isLocationsWithFalsePositives) {
                     findings.getOrPut(sourceLocation) { mutableSetOf(ortSnippet) } += ortSnippet
                 }
+
+                addLicenseFindingsFromSnippetChoice(
+                    remainingSnippetChoices,
+                    sourceLocation,
+                    ortSnippet,
+                    snippetLicenseFindings
+                )
             }
         }
 
         findings.map { SnippetFinding(it.key, it.value) }
-    }.toSet()
+    }.toSet().also {
+        remainingSnippetChoices.forEach {
+            logger.warn {
+                "Snippet choice's snippet ${it.snippet} for ${it.sourceLocation.prettyPrint()} " +
+                    "is not in the snippet results"
+            }
+            issues += Issue(
+                source = "FossId",
+                message = "Snippet choice's snippet ${it.snippet} for ${it.sourceLocation.prettyPrint()} " +
+                    "is not in the snippet results",
+                severity = Severity.WARNING
+            )
+        }
+    }
+}
+
+private fun addLicenseFindingsFromSnippetChoice(
+    remainingSnippetChoices: MutableList<SnippetChoice>,
+    sourceLocation: TextLocation,
+    snippet: OrtSnippet,
+    licenseFindings: MutableSet<LicenseFinding>
+) {
+    val isSnippetChoice = remainingSnippetChoices.removeIf { snippetChoice ->
+        snippetChoice.sourceLocation == sourceLocation && snippetChoice.snippet == snippet.purl
+    }
+
+    if (isSnippetChoice) {
+        logger.info {
+            "Adding snippet choice for ${sourceLocation.prettyPrint()} " +
+                "with license ${snippet.licenses} to the license findings"
+        }
+        licenseFindings += LicenseFinding(snippet.licenses, sourceLocation)
+    }
 }
 
 /**
@@ -266,7 +308,7 @@ internal fun urlToPackageType(url: String): PurlType =
         }
     }
 
-private fun TextLocation.prettyPrint(): String =
+internal fun TextLocation.prettyPrint(): String =
     if (startLine == TextLocation.UNKNOWN_LINE && endLine == TextLocation.UNKNOWN_LINE) {
         "$path#FULL"
     } else {

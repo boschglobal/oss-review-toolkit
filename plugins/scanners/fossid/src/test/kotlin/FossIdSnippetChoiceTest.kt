@@ -441,6 +441,95 @@ class FossIdSnippetChoiceTest : WordSpec({
             }
             summary.issues.filter { it.severity > Severity.HINT } should beEmpty()
         }
+
+        "add the license of a chosen snippet to the license findings" {
+            val projectCode = projectCode(PROJECT)
+            val scanCode = scanCode(PROJECT, null)
+            val config = createConfig(deltaScans = false, fetchSnippetMatchedLines = true)
+            val vcsInfo = createVcsInfo()
+            val scan = createScan(vcsInfo.url, "${vcsInfo.revision}_other", scanCode)
+            val pkgId = createIdentifier(index = 42)
+
+            FossIdRestService.create(config.serverUrl)
+                .expectProjectRequest(projectCode)
+                .expectListScans(projectCode, listOf(scan))
+                .expectCheckScanStatus(scanCode, ScanStatus.FINISHED)
+                .expectCreateScan(projectCode, scanCode, vcsInfo, "")
+                .expectDownload(scanCode)
+                .mockFiles(
+                    scanCode,
+                    pendingFiles = listOf(FILE_1),
+                    snippets = listOf(
+                        createSnippet(0, FILE_1, PURL_1),
+                        createSnippet(1, FILE_1, PURL_2),
+                        createSnippet(2, FILE_1, PURL_3)
+                    ),
+                    matchedLines = mapOf(
+                        0 to MatchedLines.create((10..20).toList(), (10..20).toList()),
+                        1 to MatchedLines.create((10..20).toList(), (10..20).toList()),
+                        2 to MatchedLines.create((20..30).toList(), (20..30).toList())
+                    )
+                )
+
+            val choiceLocation = TextLocation(FILE_1, 10, 20)
+            val snippetChoices = createPackageSnippetChoices(
+                vcsInfo.url,
+                SnippetChoice(choiceLocation, "", "MIT".toSpdx(), PURL_1)
+            )
+            val fossId = createFossId(config)
+
+            val summary = fossId.scan(createPackage(pkgId, vcsInfo), packageSnippetChoices = snippetChoices).summary
+
+            summary.licenseFindings shouldHaveSize 1
+            summary.licenseFindings.first().apply {
+                license shouldBe "MIT".toSpdx()
+                location shouldBe choiceLocation
+            }
+        }
+
+        "create an issue if the chosen snippet is not in the snippet results" {
+            val projectCode = projectCode(PROJECT)
+            val scanCode = scanCode(PROJECT, null)
+            val config = createConfig(deltaScans = false, fetchSnippetMatchedLines = true)
+            val vcsInfo = createVcsInfo()
+            val scan = createScan(vcsInfo.url, "${vcsInfo.revision}_other", scanCode)
+            val pkgId = createIdentifier(index = 42)
+
+            FossIdRestService.create(config.serverUrl)
+                .expectProjectRequest(projectCode)
+                .expectListScans(projectCode, listOf(scan))
+                .expectCheckScanStatus(scanCode, ScanStatus.FINISHED)
+                .expectCreateScan(projectCode, scanCode, vcsInfo, "")
+                .expectDownload(scanCode)
+                .mockFiles(
+                    scanCode,
+                    pendingFiles = listOf(FILE_1),
+                    snippets = listOf(
+                        createSnippet(0, FILE_1, PURL_1),
+                        createSnippet(1, FILE_1, PURL_2),
+                        createSnippet(2, FILE_1, PURL_3)
+                    ),
+                    matchedLines = mapOf(
+                        0 to MatchedLines.create((10..20).toList(), (10..20).toList()),
+                        1 to MatchedLines.create((10..20).toList(), (10..20).toList()),
+                        2 to MatchedLines.create((20..30).toList(), (20..30).toList())
+                    )
+                )
+
+            val choiceLocation = TextLocation("missing.java", 10, 20)
+            val snippetChoices = createPackageSnippetChoices(
+                vcsInfo.url,
+                SnippetChoice(choiceLocation, "", "MIT".toSpdx(), PURL_1)
+            )
+            val fossId = createFossId(config)
+
+            val summary = fossId.scan(createPackage(pkgId, vcsInfo), packageSnippetChoices = snippetChoices).summary
+
+            summary.issues.forAtLeastOne {
+                it.message shouldBe "Snippet choice's snippet $PURL_1 for ${choiceLocation.prettyPrint()} " +
+                    "is not in the snippet results"
+            }
+        }
     }
 })
 

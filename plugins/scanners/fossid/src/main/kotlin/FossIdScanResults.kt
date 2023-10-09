@@ -44,6 +44,7 @@ import org.ossreviewtoolkit.model.TextLocation
 import org.ossreviewtoolkit.model.config.PackageSnippetChoice
 import org.ossreviewtoolkit.model.config.SnippetChoice
 import org.ossreviewtoolkit.model.createAndLogIssue
+import org.ossreviewtoolkit.model.jsonMapper
 import org.ossreviewtoolkit.model.mapLicense
 import org.ossreviewtoolkit.model.utils.PurlType
 import org.ossreviewtoolkit.utils.common.alsoIfNull
@@ -51,6 +52,7 @@ import org.ossreviewtoolkit.utils.common.collapseToRanges
 import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.common.prettyPrintRanges
 import org.ossreviewtoolkit.utils.ort.DeclaredLicenseProcessor
+import org.ossreviewtoolkit.utils.ort.ORT_NAME
 import org.ossreviewtoolkit.utils.spdx.SpdxConstants
 import org.ossreviewtoolkit.utils.spdx.toSpdx
 
@@ -90,28 +92,37 @@ internal fun <T : Summarizable> List<T>.mapSummary(
     val files = filterNot { it.getFileName() in ignoredFiles }
     files.forEach { summarizable ->
         val summary = summarizable.toSummary()
-        val location = TextLocation(summary.path, TextLocation.UNKNOWN_LINE, TextLocation.UNKNOWN_LINE)
+        var fileComment: OrtComment? = null
 
-        summary.licences.forEach {
-            runCatching {
-                // TODO: The detected license mapping must be applied here, because FossID can return license strings
-                //       which cannot be parsed to an SpdxExpression. A better solution could be to automatically
-                //       convert the strings into a form that can be parsed, then the mapping could be applied globally.
-                LicenseFinding(it.identifier.mapLicense(detectedLicenseMapping), location)
-            }.onSuccess { licenseFinding ->
-                licenseFindings += licenseFinding.copy(license = licenseFinding.license.normalize())
-            }.onFailure { spdxException ->
-                issues += FossId.createAndLogIssue(
-                    source = "FossId",
-                    message = "Failed to parse license '${it.identifier}' as an SPDX expression: " +
-                        spdxException.collectMessages()
-                )
+        if (summarizable is MarkedAsIdentifiedFile) {
+            summarizable.comments.values.firstOrNull {
+                it.comment.contains(ORT_NAME)
+            }?.apply {
+                runCatching {
+                    fileComment = jsonMapper.readValue(this.comment, OrtComment::class.java)
+                }
+            }
+        }
+
+        val defaultLocation = TextLocation(summary.path, TextLocation.UNKNOWN_LINE, TextLocation.UNKNOWN_LINE)
+
+        summary.licences.forEach { licenseAddedInTheUI ->
+            mapLicense(licenseAddedInTheUI.identifier, defaultLocation, issues, detectedLicenseMapping)?.let {
+                licenseFindings += it
+            }
+        }
+
+        fileComment?.ort?.licenses?.forEach { (licenseInORTComment, locations) ->
+            locations.forEach { location ->
+                mapLicense(licenseInORTComment, location, issues, detectedLicenseMapping)?.let {
+                    licenseFindings += it
+                }
             }
         }
 
         summarizable.getCopyright().let {
             if (it.isNotEmpty()) {
-                copyrightFindings += CopyrightFinding(it, location)
+                copyrightFindings += CopyrightFinding(it, defaultLocation)
             }
         }
     }
@@ -120,6 +131,31 @@ internal fun <T : Summarizable> List<T>.mapSummary(
         licenseFindings = licenseFindings,
         copyrightFindings = copyrightFindings
     )
+}
+
+/**
+ * Convert a [license] at [location] from FossID to a valid [LicenseFinding]. If the license cannot be mapped, null is
+ * returned and an issue is added to [issues].
+ */
+private fun mapLicense(
+    license: String,
+    location: TextLocation,
+    issues: MutableList<Issue>,
+    detectedLicenseMapping: Map<String, String>
+): LicenseFinding? {
+    return runCatching {
+        // TODO: The detected license mapping must be applied here, because FossID can return license strings
+        //       which cannot be parsed to an SpdxExpression. A better solution could be to automatically
+        //       convert the strings into a form that can be parsed, then the mapping could be applied globally.
+        LicenseFinding(license.mapLicense(detectedLicenseMapping), location)
+    }.onSuccess { licenseFinding ->
+        licenseFinding.copy(license = licenseFinding.license.normalize())
+    }.onFailure { spdxException ->
+        issues += FossId.createAndLogIssue(
+            source = "FossId",
+            message = "Failed to parse license '$license' as an SPDX expression: ${spdxException.collectMessages()}"
+        )
+    }.getOrNull()
 }
 
 /**
@@ -248,16 +284,22 @@ internal fun mapSnippetFindings(
         findings.map { SnippetFinding(it.key, it.value) }
     }.toSet().also {
         remainingSnippetChoices.forEach {
-            logger.warn {
-                "Snippet choice's snippet ${it.snippet} for ${it.sourceLocation.prettyPrint()} " +
-                    "is not in the snippet results"
+            // The issue is created only if the chosen snippet does not correspond to a file marked by a previous run.
+            val isNotMarkedFile = rawResults.markedAsIdentifiedFiles.none { markedFile ->
+                markedFile.file.path == it.sourceLocation.path
             }
-            issues += Issue(
-                source = "FossId",
-                message = "Snippet choice's snippet ${it.snippet} for ${it.sourceLocation.prettyPrint()} " +
-                    "is not in the snippet results",
-                severity = Severity.WARNING
-            )
+            if (isNotMarkedFile) {
+                logger.warn {
+                    "Snippet choice's snippet ${it.snippet} for ${it.sourceLocation.prettyPrint()} " +
+                        "is not in the snippet results"
+                }
+                issues += Issue(
+                    source = "FossId",
+                    message = "Snippet choice's snippet ${it.snippet} for ${it.sourceLocation.prettyPrint()} " +
+                        "is not in the snippet results",
+                    severity = Severity.WARNING
+                )
+            }
         }
     }
 }

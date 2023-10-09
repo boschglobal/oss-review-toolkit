@@ -27,6 +27,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldStartWith
 
 import org.ossreviewtoolkit.clients.fossid.model.identification.common.LicenseMatchType
+import org.ossreviewtoolkit.clients.fossid.model.identification.markedAsIdentified.Comment
 import org.ossreviewtoolkit.clients.fossid.model.identification.markedAsIdentified.File
 import org.ossreviewtoolkit.clients.fossid.model.identification.markedAsIdentified.License
 import org.ossreviewtoolkit.clients.fossid.model.identification.markedAsIdentified.LicenseFile
@@ -110,7 +111,11 @@ class FossIdLicenseMappingTest : WordSpec({
     }
 })
 
-private fun createMarkAsIdentifiedFile(license: String): MarkedAsIdentifiedFile {
+internal fun createMarkAsIdentifiedFile(
+    license: String,
+    path: String = FILE_PATH,
+    comment: String? = null
+): MarkedAsIdentifiedFile {
     val fileLicense = License(
         1,
         LicenseMatchType.FILE,
@@ -133,7 +138,7 @@ private fun createMarkAsIdentifiedFile(license: String): MarkedAsIdentifiedFile 
 
     return MarkedAsIdentifiedFile(
         "comment",
-        emptyMap(),
+        if (comment == null) emptyMap() else mapOf(1 to Comment(1, 1, comment)),
         1,
         "copyright",
         1,
@@ -142,11 +147,11 @@ private fun createMarkAsIdentifiedFile(license: String): MarkedAsIdentifiedFile 
         it.file = File(
             "fileId",
             "fileMd5",
-            FILE_PATH,
+            path,
             "fileSha1",
             "fileSha256",
             0,
-            mutableMapOf(1 to fileLicense)
+            licenses = if (comment != null) null else mutableMapOf(1 to fileLicense)
         )
     }
 }

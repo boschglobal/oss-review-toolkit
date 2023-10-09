@@ -38,6 +38,8 @@ import org.ossreviewtoolkit.clients.fossid.FossIdRestService
 import org.ossreviewtoolkit.clients.fossid.FossIdServiceWithVersion
 import org.ossreviewtoolkit.clients.fossid.PolymorphicList
 import org.ossreviewtoolkit.clients.fossid.PolymorphicResponseBody
+import org.ossreviewtoolkit.clients.fossid.addComponentIdentification
+import org.ossreviewtoolkit.clients.fossid.addFileComment
 import org.ossreviewtoolkit.clients.fossid.listIdentifiedFiles
 import org.ossreviewtoolkit.clients.fossid.listIgnoredFiles
 import org.ossreviewtoolkit.clients.fossid.listMarkedAsIdentifiedFiles
@@ -56,6 +58,8 @@ import org.ossreviewtoolkit.model.TextLocation
 import org.ossreviewtoolkit.model.config.LocationWithFalsePositives
 import org.ossreviewtoolkit.model.config.PackageSnippetChoice
 import org.ossreviewtoolkit.model.config.SnippetChoice
+import org.ossreviewtoolkit.model.jsonMapper
+import org.ossreviewtoolkit.utils.ort.ORT_NAME
 import org.ossreviewtoolkit.utils.spdx.toSpdx
 
 /** A test project name. */
@@ -327,14 +331,10 @@ class FossIdSnippetChoiceTest : WordSpec({
                 )
                 .expectMarkAsIdentified(scanCode, FILE_1)
 
+            val choiceLocation = TextLocation(FILE_1, 10, 20)
             val snippetChoices = createPackageSnippetChoices(
                 vcsInfo.url,
-                SnippetChoice(
-                    TextLocation(FILE_1, 10, 20),
-                    "",
-                    "MIT".toSpdx(),
-                    PURL_1
-                )
+                SnippetChoice(choiceLocation, "", "MIT".toSpdx(), PURL_1)
             )
             val fossId = createFossId(config)
 
@@ -343,6 +343,18 @@ class FossIdSnippetChoiceTest : WordSpec({
             summary.snippetFindings should beEmpty()
             coVerify {
                 service.markAsIdentified(USER, API_KEY, scanCode, FILE_1, any())
+                service.addComponentIdentification(
+                    USER,
+                    API_KEY,
+                    scanCode,
+                    FILE_1,
+                    "fakepackage1",
+                    "1.0.0",
+                    false
+                )
+                val payload = OrtCommentPayload(mapOf("MIT" to listOf(choiceLocation)), 1, 0)
+                val comment = jsonMapper.writeValueAsString(OrtComment(payload))
+                service.addFileComment(USER, API_KEY, scanCode, FILE_1, comment)
             }
         }
 
@@ -530,6 +542,80 @@ class FossIdSnippetChoiceTest : WordSpec({
                     "is not in the snippet results"
             }
         }
+
+        "add the license of already marked as identified file with a snippet choice to the license findings" {
+            val projectCode = projectCode(PROJECT)
+            val scanCode = scanCode(PROJECT, null)
+            val config = createConfig(deltaScans = false, fetchSnippetMatchedLines = true)
+            val vcsInfo = createVcsInfo()
+            val scan = createScan(vcsInfo.url, "${vcsInfo.revision}_other", scanCode)
+            val pkgId = createIdentifier(index = 42)
+
+            val choiceLocation = TextLocation(FILE_1, 10, 20)
+            val payload = OrtCommentPayload(mapOf("MIT" to listOf(choiceLocation)), 1, 0)
+            val comment = jsonMapper.writeValueAsString(mapOf(ORT_NAME to payload))
+            val markedAsIdentifiedFile = createMarkAsIdentifiedFile("MIT", FILE_1, comment)
+            FossIdRestService.create(config.serverUrl)
+                .expectProjectRequest(projectCode)
+                .expectListScans(projectCode, listOf(scan))
+                .expectCheckScanStatus(scanCode, ScanStatus.FINISHED)
+                .expectCreateScan(projectCode, scanCode, vcsInfo, "")
+                .expectDownload(scanCode)
+                .mockFiles(
+                    scanCode,
+                    markedFiles = listOf(markedAsIdentifiedFile)
+                )
+
+            val snippetChoices = createPackageSnippetChoices(
+                vcsInfo.url,
+                SnippetChoice(choiceLocation, "", "MIT".toSpdx(), PURL_1)
+            )
+            val fossId = createFossId(config)
+
+            val summary = fossId.scan(createPackage(pkgId, vcsInfo), packageSnippetChoices = snippetChoices).summary
+
+            summary.licenseFindings shouldHaveSize 1
+            summary.licenseFindings.first().apply {
+                license shouldBe "MIT".toSpdx()
+                location shouldBe choiceLocation
+            }
+            summary.issues.filter { it.severity > Severity.HINT } should beEmpty()
+            summary.snippetFindings should beEmpty()
+        }
+
+        "add the license of marked as identified files that have been manually marked in the UI (legacy behavior)" {
+            val projectCode = projectCode(PROJECT)
+            val scanCode = scanCode(PROJECT, null)
+            val config = createConfig(deltaScans = false, fetchSnippetMatchedLines = true)
+            val vcsInfo = createVcsInfo()
+            val scan = createScan(vcsInfo.url, "${vcsInfo.revision}_other", scanCode)
+            val pkgId = createIdentifier(index = 42)
+
+            val markedAsIdentifiedFile = createMarkAsIdentifiedFile("MIT", FILE_1)
+            FossIdRestService.create(config.serverUrl)
+                .expectProjectRequest(projectCode)
+                .expectListScans(projectCode, listOf(scan))
+                .expectCheckScanStatus(scanCode, ScanStatus.FINISHED)
+                .expectCreateScan(projectCode, scanCode, vcsInfo, "")
+                .expectDownload(scanCode)
+                .mockFiles(
+                    scanCode,
+                    markedFiles = listOf(markedAsIdentifiedFile)
+                )
+
+            val fossId = createFossId(config)
+
+            val summary = fossId.scan(createPackage(pkgId, vcsInfo), packageSnippetChoices = emptyList()).summary
+
+            summary.licenseFindings shouldHaveSize 1
+            summary.licenseFindings.first().apply {
+                license shouldBe "MIT".toSpdx()
+                val defaultLocation = TextLocation(FILE_1, -1, -1)
+                location shouldBe defaultLocation
+            }
+            summary.issues.filter { it.severity > Severity.HINT } should beEmpty()
+            summary.snippetFindings should beEmpty()
+        }
     }
 })
 
@@ -578,6 +664,11 @@ fun FossIdServiceWithVersion.mockFiles(
  */
 fun FossIdServiceWithVersion.expectMarkAsIdentified(scanCode: String, path: String): FossIdServiceWithVersion {
     coEvery { markAsIdentified(USER, API_KEY, scanCode, path, any()) } returns
+        EntityResponseBody(status = 1)
+    coEvery {
+        addComponentIdentification(USER, API_KEY, scanCode, path, any(), any(), false)
+    } returns EntityResponseBody(status = 1)
+    coEvery { addFileComment(USER, API_KEY, scanCode, path, any()) } returns
         EntityResponseBody(status = 1)
     return this
 }

@@ -38,6 +38,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.clients.fossid.FossIdRestService
+import org.ossreviewtoolkit.clients.fossid.addComponentIdentification
+import org.ossreviewtoolkit.clients.fossid.addFileComment
 import org.ossreviewtoolkit.clients.fossid.checkDownloadStatus
 import org.ossreviewtoolkit.clients.fossid.checkResponse
 import org.ossreviewtoolkit.clients.fossid.createIgnoreRule
@@ -78,6 +80,7 @@ import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.PackageSnippetChoice
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
 import org.ossreviewtoolkit.model.createAndLogIssue
+import org.ossreviewtoolkit.model.jsonMapper
 import org.ossreviewtoolkit.scanner.PackageScannerWrapper
 import org.ossreviewtoolkit.scanner.ProvenanceScannerWrapper
 import org.ossreviewtoolkit.scanner.ScanContext
@@ -896,7 +899,8 @@ class FossId internal constructor(
             scanCode,
             packageSnippetChoice,
             snippetFindings,
-            rawResults.listPendingFiles
+            rawResults.listPendingFiles,
+            snippetLicenseFindings
         )
 
         val ignoredFiles = rawResults.listIgnoredFiles.associateBy { it.path }
@@ -923,18 +927,23 @@ class FossId internal constructor(
     }
 
     /**
-     * Mark all the files having a snippet choice as identified, only if they have no non-chosen source location
-     * remaining.
+     * Mark all the files in [snippetChoices] as identified, only after searching in [snippetFindings] that they have no
+     * non-chosen source location remaining. Only files in [listPendingFiles] are marked.
+     * Files marked as identified have a license identification and a source location (stored in a comment), using
+     * [licenseFindings] as reference.
      */
     private fun markFilesWithChosenSnippetsAsIdentified(
         scanCode: String,
         packageSnippetChoice: PackageSnippetChoice?,
         snippetFinding: Set<SnippetFinding>,
-        listPendingFiles: List<String>
+        listPendingFiles: List<String>,
+        licenseFindings: Set<LicenseFinding>
     ) {
         val snippetChoices = packageSnippetChoice?.snippetChoices.orEmpty()
         val locationsWithFalsePositives =
             packageSnippetChoice?.locationsWithFalsePositives.orEmpty()
+        val licenseFindingsByPath = licenseFindings.groupBy { it.location.path }
+        val snippetRegEx = "^.*/(?<artifact>[^@]+)@(?<version>.+)".toRegex()
 
         runBlocking(Dispatchers.IO) {
             val candidatePathsToMark = mutableListOf<Pair<Boolean, String>>()
@@ -962,6 +971,57 @@ class FossId internal constructor(
                         }
                         requests += async {
                             service.markAsIdentified(config.user, config.apiKey, scanCode, path, false)
+                        }
+
+                        if (isSnippetChoice) {
+                            val filteredSnippetChoices =
+                                snippetChoices.filter { it.sourceLocation.path == path }
+                            filteredSnippetChoices.forEach { filteredSnippetChoice ->
+                                val match = snippetRegEx.matchEntire(filteredSnippetChoice.snippet)
+                                match?.let {
+                                    val artifact = match.groups["artifact"]!!.value
+                                    val version = match.groups["version"]!!.value
+                                    val location = filteredSnippetChoice.sourceLocation
+
+                                    requests += async {
+                                        logger.info {
+                                            "Adding component identification '$artifact/$version' to '$path' " +
+                                                "at ${location.startLine}-${location.endLine}."
+                                        }
+
+                                        service.addComponentIdentification(
+                                            config.user,
+                                            config.apiKey,
+                                            scanCode,
+                                            path,
+                                            artifact,
+                                            version,
+                                            false
+                                        )
+                                    }
+                                }
+                            }
+
+                            // The chosen snippet source location lines cannot be stored in the scan nor the file so it
+                            // is stored into a comment attached to the identified file instead.
+                            val licenseFinding = licenseFindingsByPath[path]
+                            val licenseFindingsByLicense = licenseFinding?.groupBy({ it.license.toString() }) {
+                                it.location
+                            }
+
+                            val snippetChoiceCount = snippetChoices.count { it.sourceLocation.path == pair.second }
+                            val locationWithFalsePositivesCount =
+                                locationsWithFalsePositives.count { it.sourceLocation.path == pair.second }
+                            val payload = OrtCommentPayload(
+                                licenseFindingsByLicense.orEmpty(),
+                                snippetChoiceCount,
+                                locationWithFalsePositivesCount
+                            )
+                            val comment = OrtComment(payload)
+                            val jsonComment = jsonMapper.writeValueAsString(comment)
+                            requests += async {
+                                service.addFileComment(config.user, config.apiKey, scanCode, path, jsonComment)
+                            }
                         }
                     }
                 }

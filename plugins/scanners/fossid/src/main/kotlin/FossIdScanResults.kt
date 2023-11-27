@@ -324,6 +324,42 @@ private fun addLicenseFindingsFromSnippetChoice(
 }
 
 /**
+ * Check all [markedAsIdentifiedFiles] if their snippet choice / location with false positives counts matched the ones
+ * stored in the comment: When not, it means some of this configuration has been removed and the files should be
+ * considered as pending again.
+ */
+internal fun listUnmatchedSnippetChoices(
+    markedAsIdentifiedFiles: List<MarkedAsIdentifiedFile>,
+    packageSnippetChoice: PackageSnippetChoice?
+): List<String> =
+    markedAsIdentifiedFiles.filterNot { markedAsIdentifiedFile ->
+        val markedFileName = markedAsIdentifiedFile.getFileName()
+        val comment = markedAsIdentifiedFile.comments.values.firstOrNull {
+            it.comment.contains(ORT_NAME)
+        }?.runCatching {
+            jsonMapper.readValue(this.comment, OrtComment::class.java)
+        }?.onFailure {
+            logger.warn {
+                "File $markedFileName is marked as identified but it does have a valid or comment. It will be ignored."
+            }
+        }?.getOrDefault(null)
+
+        when {
+            comment != null -> {
+                val snippetChoiceCount = packageSnippetChoice?.snippetChoices.orEmpty().count {
+                    it.sourceLocation.path == markedFileName
+                }
+                val locationWithFalsePositives = packageSnippetChoice?.locationsWithFalsePositives.orEmpty().count {
+                    it.sourceLocation.path == markedFileName
+                }
+                snippetChoiceCount == comment.ort.snippetChoiceCount &&
+                    locationWithFalsePositives == comment.ort.locationsWithFalsePositivesCount
+            }
+            else -> true
+        }
+    }.map { it.getFileName() }
+
+/**
  * Return the [PurlType] as determined from the given [url], or [PurlType.GENERIC] if there is no match.
  */
 internal fun urlToPackageType(url: String): PurlType =

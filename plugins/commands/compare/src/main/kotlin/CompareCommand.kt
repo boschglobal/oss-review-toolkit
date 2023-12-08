@@ -39,14 +39,17 @@ import com.github.ajalt.clikt.parameters.types.file
 import com.github.ajalt.mordant.rendering.Theme
 import com.github.difflib.DiffUtils
 import com.github.difflib.UnifiedDiffUtils
+import org.ossreviewtoolkit.model.AdvisorDetails
 
 import java.time.Instant
 
 import org.ossreviewtoolkit.model.AdvisorRecord
+import org.ossreviewtoolkit.model.AdvisorResult
 import org.ossreviewtoolkit.model.AdvisorRun
 import org.ossreviewtoolkit.model.AnalyzerResult
 import org.ossreviewtoolkit.model.AnalyzerRun
 import org.ossreviewtoolkit.model.CopyrightFinding
+import org.ossreviewtoolkit.model.Defect
 import org.ossreviewtoolkit.model.DependencyGraph
 import org.ossreviewtoolkit.model.EvaluatorRun
 import org.ossreviewtoolkit.model.FileList
@@ -93,6 +96,7 @@ import org.ossreviewtoolkit.model.config.ScannerConfiguration
 import org.ossreviewtoolkit.model.config.ScopeExclude
 import org.ossreviewtoolkit.model.config.VulnerabilityResolution
 import org.ossreviewtoolkit.model.mapper
+import org.ossreviewtoolkit.model.vulnerabilities.VulnerabilityReference
 import org.ossreviewtoolkit.plugins.commands.api.OrtCommand
 import org.ossreviewtoolkit.utils.common.expandTilde
 import org.ossreviewtoolkit.utils.common.getCommonParentFile
@@ -740,7 +744,7 @@ private fun AdvisorRun?.diff(other: AdvisorRun?): AdvisorRunDiff? {
             endTimeB = other?.endTime,
             environmentB = other?.environment,
             configB = other?.config,
-            resultsB = other?.results
+            results = emptyMap<Identifier, List<AdvisorResult>>().advisorResultsDiff(other?.results?.advisorResults.orEmpty())
         )
     } else if (other == null) {
         AdvisorRunDiff(
@@ -748,7 +752,7 @@ private fun AdvisorRun?.diff(other: AdvisorRun?): AdvisorRunDiff? {
             endTimeA = endTime,
             environmentA = environment,
             configA = config,
-            resultsA = results
+            results = results.advisorResults.advisorResultsDiff(emptyMap())
         )
     } else {
         AdvisorRunDiff(
@@ -760,10 +764,68 @@ private fun AdvisorRun?.diff(other: AdvisorRun?): AdvisorRunDiff? {
             environmentB = other.environment.takeIf { it != environment },
             configA = config.takeIf { it != other.config },
             configB = other.config.takeIf { it != config },
-            resultsA = results.takeIf { it != other.results },
-            resultsB = other.results.takeIf { it != results }
+            results = results.advisorResults.advisorResultsDiff(other.results.advisorResults)
         )
     }
+}
+
+private fun Map<Identifier, List<AdvisorResult>>.advisorResultsDiff(
+    other: Map<Identifier, List<AdvisorResult>>
+): Map<Identifier, List<AdvisorResultDiff>> {
+    val ids = (keys + other.keys).toSortedSet()
+
+    return ids.associateWith { id ->
+        val resultsA = get(id)?.groupBy { it.advisor.name }
+        val resultsB = other[id]?.groupBy { it.advisor.name }
+
+        val advisors = (resultsA?.keys.orEmpty() + resultsB?.keys.orEmpty()).toSortedSet()
+
+        advisors.map { advisor ->
+            AdvisorResultDiff(
+                defects = resultsA?.get(advisor).orEmpty().defectsDiff(resultsB?.get(advisor).orEmpty()),
+                vulnerabilities = resultsA?.get(advisor).orEmpty().vulnerabilitiesDiff(resultsB?.get(advisor).orEmpty())
+            )
+        }.filter {
+            it.defects?.defectsA?.isNotEmpty() == true ||
+                it.defects?.defectsB?.isNotEmpty() == true ||
+                it.vulnerabilities?.vulnerabilities?.isNotEmpty() == true
+        }
+    }
+}
+
+private fun List<AdvisorResult>.defectsDiff(other: List<AdvisorResult>): DefectsDiff {
+    val defectsA = flatMap { it.defects }.distinctBy { it.id }.sortedBy { it.id }
+    val defectsB = other.flatMap { it.defects }.distinctBy { it.id }.sortedBy { it.id }
+
+    return DefectsDiff(
+        defectsA = (defectsA - defectsB).takeUnless { it.isEmpty() },
+        defectsB = (defectsB - defectsA).takeUnless { it.isEmpty() }
+    )
+}
+
+private fun List<AdvisorResult>.vulnerabilitiesDiff(other: List<AdvisorResult>): VulnerabilitiesDiff {
+    val vulnerabilitiesA = flatMap { it.vulnerabilities }.distinctBy { it.id }.sortedBy { it.id }
+    val vulnerabilitiesB = other.flatMap { it.vulnerabilities }.distinctBy { it.id }.sortedBy { it.id }
+
+    val keys = (vulnerabilitiesA.map { it.id } + vulnerabilitiesB.map { it.id }).toSortedSet()
+
+    return VulnerabilitiesDiff(
+        keys.associateWith { id ->
+            val vulnerabilityA = vulnerabilitiesA.find { it.id == id }
+            val vulnerabilityB = vulnerabilitiesB.find { it.id == id }
+
+            val referencesA = vulnerabilityA?.references.orEmpty()
+            val referencesB = vulnerabilityB?.references.orEmpty()
+
+            VulnerabilityDiff(
+                id = id,
+                summary = vulnerabilityA?.summary.orEmpty(),
+                description = vulnerabilityB?.summary.orEmpty(),
+                referencesA = (referencesA - referencesB).takeUnless { it.isEmpty() },
+                referencesB = (referencesB - referencesA).takeUnless { it.isEmpty() }
+            )
+        }
+    )
 }
 
 private fun ResolvedConfiguration.diff(other: ResolvedConfiguration): ResolvedConfigurationDiff? =
@@ -1024,8 +1086,29 @@ private data class AdvisorRunDiff(
     val environmentB: Environment? = null,
     val configA: AdvisorConfiguration? = null,
     val configB: AdvisorConfiguration? = null,
-    val resultsA: AdvisorRecord? = null,
-    val resultsB: AdvisorRecord? = null
+    val results: Map<Identifier, List<AdvisorResultDiff>>? = null,
+)
+
+private data class AdvisorResultDiff(
+    val defects: DefectsDiff? = null,
+    val vulnerabilities: VulnerabilitiesDiff? = null
+)
+
+private data class DefectsDiff(
+    val defectsA: List<Defect>? = null,
+    val defectsB: List<Defect>? = null
+)
+
+private data class VulnerabilitiesDiff(
+    val vulnerabilities: Map<String, VulnerabilityDiff>? = null
+)
+
+private data class VulnerabilityDiff(
+    val id: String,
+    val summary: String,
+    val description: String,
+    val referencesA: List<VulnerabilityReference>? = null,
+    val referencesB: List<VulnerabilityReference>? = null
 )
 
 private data class EvaluatorRunDiff(

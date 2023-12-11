@@ -41,6 +41,8 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.ResponseBody
 
+import okio.Buffer
+
 import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.clients.fossid.model.Project
@@ -209,7 +211,14 @@ interface FossIdRestService {
 
             val readTimeout = newReadTimeout?.toIntOrNull() ?: chain.readTimeoutMillis()
 
-            return chain.withReadTimeout(readTimeout, TimeUnit.MILLISECONDS).proceed(request)
+            return runCatching {
+                chain.withReadTimeout(readTimeout, TimeUnit.MILLISECONDS).proceed(request)
+            }.onFailure {
+                logger.error { "Error when intercepting the call chain: ${it.message}" }
+                val requestBuffer = Buffer()
+                request.body?.writeTo(requestBuffer)
+                logger.error { "Request payload: ${requestBuffer.readUtf8()}" }
+            }.getOrThrow()
         }
     }
 

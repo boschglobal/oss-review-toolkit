@@ -130,6 +130,7 @@ internal fun mapSnippetFindings(
     packageSnippetChoice: PackageSnippetChoice?
 ): Set<SnippetFinding> {
     val snippetChoices = packageSnippetChoice?.snippetChoices.orEmpty()
+    val locationsWithFalsePositives = packageSnippetChoice?.locationsWithFalsePositives.orEmpty()
 
     return rawResults.listSnippets.flatMap { (file, rawSnippets) ->
         val findings = mutableMapOf<TextLocation, MutableSet<OrtSnippet>>()
@@ -218,7 +219,17 @@ internal fun mapSnippetFindings(
                     else -> false
                 }
 
-                if (!isSnippetChoice) {
+                val isLocationsWithFalsePositives = locationsWithFalsePositives.any {
+                    it.sourceLocation == sourceLocation
+                }
+                if (isLocationsWithFalsePositives) {
+                    logger.info {
+                        "Ignoring snippet $purl for file ${sourceLocation.prettyPrint()}, " +
+                            "as this is a location with only false positives."
+                    }
+                }
+
+                if (!isSnippetChoice && !isLocationsWithFalsePositives) {
                     findings.getOrPut(sourceLocation) { mutableSetOf(ortSnippet) } += ortSnippet
                 }
             }

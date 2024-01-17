@@ -21,7 +21,9 @@ package org.ossreviewtoolkit.plugins.scanners.fossid
 
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.inspectors.forAtLeastOne
+import io.kotest.matchers.collections.beEmpty
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
 
 import io.mockk.coEvery
@@ -47,7 +49,9 @@ import org.ossreviewtoolkit.clients.fossid.model.result.MatchedLines
 import org.ossreviewtoolkit.clients.fossid.model.result.Snippet
 import org.ossreviewtoolkit.clients.fossid.model.status.ScanStatus
 import org.ossreviewtoolkit.downloader.VersionControlSystem
+import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.model.TextLocation
+import org.ossreviewtoolkit.model.config.LocationWithFalsePositives
 import org.ossreviewtoolkit.model.config.PackageSnippetChoice
 import org.ossreviewtoolkit.model.config.SnippetChoice
 import org.ossreviewtoolkit.utils.spdx.toSpdx
@@ -242,11 +246,67 @@ class FossIdSnippetChoiceTest : WordSpec({
                 }
             }
         }
+
+        "not report a snippet when there are false positives for its location" {
+            val projectCode = projectCode(PROJECT)
+            val scanCode = scanCode(PROJECT, null)
+            val config = createConfig(deltaScans = false, fetchSnippetMatchedLines = true)
+            val vcsInfo = createVcsInfo()
+            val scan = createScan(vcsInfo.url, "${vcsInfo.revision}_other", scanCode)
+            val pkgId = createIdentifier(index = 42)
+
+            FossIdRestService.create(config.serverUrl)
+                .expectProjectRequest(projectCode)
+                .expectListScans(projectCode, listOf(scan))
+                .expectCheckScanStatus(scanCode, ScanStatus.FINISHED)
+                .expectCreateScan(projectCode, scanCode, vcsInfo, "")
+                .expectDownload(scanCode)
+                .mockFiles(
+                    scanCode,
+                    pendingFiles = listOf(FILE_1),
+                    snippets = listOf(
+                        createSnippet(0, FILE_1, PURL_1),
+                        createSnippet(1, FILE_1, PURL_2),
+                        createSnippet(2, FILE_1, PURL_3)
+                    ),
+                    matchedLines = mapOf(
+                        0 to MatchedLines.create((10..20).toList(), (10..20).toList()),
+                        1 to MatchedLines.create((10..20).toList(), (10..20).toList()),
+                        2 to MatchedLines.create((20..30).toList(), (20..30).toList())
+                    )
+                )
+
+            val snippetChoices = createLocationWithFalsePositives(
+                vcsInfo.url,
+                LocationWithFalsePositives(
+                    TextLocation(FILE_1, 10, 20),
+                    ""
+                )
+            )
+            val fossId = createFossId(config)
+
+            val summary = fossId.scan(createPackage(pkgId, vcsInfo), packageSnippetChoices = snippetChoices).summary
+
+            summary.snippetFindings shouldHaveSize 1
+            summary.snippetFindings.first().apply {
+                sourceLocation.path shouldBe FILE_1
+                snippets shouldHaveSize 1
+                snippets.first().apply {
+                    purl shouldBe PURL_3
+                }
+            }
+            summary.issues.filter { it.severity > Severity.HINT } should beEmpty()
+        }
     }
 })
 
 private fun createPackageSnippetChoices(provenanceUrl: String, vararg snippetChoices: SnippetChoice) =
     listOf(PackageSnippetChoice(provenanceUrl, snippetChoices.toList()))
+
+private fun createLocationWithFalsePositives(
+    provenanceUrl: String,
+    vararg locationWithFalsePositives: LocationWithFalsePositives
+) = listOf(PackageSnippetChoice(provenanceUrl, emptyList(), locationWithFalsePositives.toList()))
 
 fun FossIdServiceWithVersion.mockFiles(
     scanCode: String,

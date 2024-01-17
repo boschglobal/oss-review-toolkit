@@ -295,8 +295,12 @@ class FossId internal constructor(
                     }
 
                     logger.info {
-                            val snippetChoices = packageSnippetChoice?.snippetChoices.orEmpty()
+                        val snippetChoices = packageSnippetChoice?.snippetChoices.orEmpty()
                         "Repository ${provenance.vcsInfo.url} has ${snippetChoices.size} snippet choice(s)."
+                        val locationsWithFalsePositives =
+                            packageSnippetChoice?.locationsWithFalsePositives.orEmpty()
+                        "Repository ${provenance.vcsInfo.url} has ${locationsWithFalsePositives.size} " +
+                            "location(s) with false positives."
                     }
 
                     val rawResults = getRawResults(scanCode)
@@ -307,8 +311,8 @@ class FossId internal constructor(
                         scanCode,
                         scanId,
                         issues,
-                            context.detectedLicenseMapping,
-                            packageSnippetChoice
+                        context.detectedLicenseMapping,
+                        packageSnippetChoice
                     )
                 } else {
                     val issue = createAndLogIssue(

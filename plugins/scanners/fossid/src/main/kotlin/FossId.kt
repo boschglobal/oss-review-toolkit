@@ -71,6 +71,7 @@ import org.ossreviewtoolkit.model.ScanSummary
 import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.model.UnknownProvenance
 import org.ossreviewtoolkit.model.VcsType
+import org.ossreviewtoolkit.model.config.PackageSnippetChoice
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
 import org.ossreviewtoolkit.model.createAndLogIssue
 import org.ossreviewtoolkit.scanner.PackageScannerWrapper
@@ -292,9 +293,9 @@ class FossId internal constructor(
                     val packageSnippetChoice = context.packageSnippetChoices.firstOrNull {
                         it.provenanceUrl == provenance.vcsInfo.url
                     }
-                    val snippetChoices = packageSnippetChoice?.snippetChoices.orEmpty()
 
                     logger.info {
+                            val snippetChoices = packageSnippetChoice?.snippetChoices.orEmpty()
                         "Repository ${provenance.vcsInfo.url} has ${snippetChoices.size} snippet choice(s)."
                     }
 
@@ -306,7 +307,8 @@ class FossId internal constructor(
                         scanCode,
                         scanId,
                         issues,
-                        context.detectedLicenseMapping
+                            context.detectedLicenseMapping,
+                            packageSnippetChoice
                     )
                 } else {
                     val issue = createAndLogIssue(
@@ -817,10 +819,14 @@ class FossId internal constructor(
                     }
                     logger.info { "${snippets.size} snippets." }
 
+                    val excludedMatchTypes = enumSetOf(MatchType.IGNORED, MatchType.NONE)
+                    // Remove snippet choice and false positives from the snippets
+                    val filteredSnippets = snippets.filterNotTo(mutableSetOf()) { it.matchType in excludedMatchTypes }
+
                     if (config.fetchSnippetMatchedLines) {
                         logger.info { "Listing snippet matched lines for $it..." }
 
-                        snippets.filter { it.matchType == MatchType.PARTIAL }.map { snippet ->
+                        filteredSnippets.filter { it.matchType == MatchType.PARTIAL }.map { snippet ->
                             val matchedLinesResponse =
                                 service.listMatchedLines(config.user, config.apiKey, scanCode, it, snippet.id)
                                     .checkResponse("list snippets matched lines")
@@ -831,8 +837,7 @@ class FossId internal constructor(
                         }
                     }
 
-                    val excludedMatchTypes = enumSetOf(MatchType.IGNORED, MatchType.NONE)
-                    it to snippets.filterNotTo(mutableSetOf()) { it.matchType in excludedMatchTypes }
+                    it to filteredSnippets
                 }
             }.awaitAll().toMap()
         }
@@ -858,7 +863,8 @@ class FossId internal constructor(
         scanCode: String,
         scanId: String,
         additionalIssues: MutableList<Issue>,
-        detectedLicenseMapping: Map<String, String>
+        detectedLicenseMapping: Map<String, String>,
+        packageSnippetChoice: PackageSnippetChoice?
     ): ScanResult {
         // TODO: Maybe get issues from FossID (see has_failed_scan_files, get_failed_files and maybe get_scan_log).
 
@@ -870,7 +876,7 @@ class FossId internal constructor(
             )
         )
 
-        val snippetFindings = mapSnippetFindings(rawResults, issues)
+        val snippetFindings = mapSnippetFindings(rawResults, issues, packageSnippetChoice)
 
         val ignoredFiles = rawResults.listIgnoredFiles.associateBy { it.path }
 

@@ -27,11 +27,10 @@ plugins {
 
 dependencies {
     api(projects.model)
+    api(libs.kotlinx.coroutines)
 
     implementation(projects.downloader)
     implementation(projects.utils.ortUtils)
-
-    implementation(libs.kotlinx.coroutines)
 
     funTestImplementation(platform(projects.plugins.packageManagers))
 

@@ -24,7 +24,12 @@ import java.nio.file.FileSystems
 import java.nio.file.Path
 
 import kotlin.io.path.invariantSeparatorsPathString
-import kotlin.time.measureTime
+import kotlin.time.measureTimedValue
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 
 import org.apache.logging.log4j.kotlin.logger
 
@@ -279,49 +284,61 @@ abstract class PackageManager(
             }
         }
 
-        val result = mutableMapOf<File, List<ProjectAnalyzerResult>>()
-
         beforeResolution(definitionFiles)
 
-        definitionFiles.forEach { definitionFile ->
-            val relativePath = definitionFile.relativeTo(analysisRoot).invariantSeparatorsPath.ifEmpty { "." }
+        val result = runBlocking(Dispatchers.IO) {
+            val asyncResult = definitionFiles.associateWith { definitionFile ->
+                val relativePath = definitionFile.relativeTo(analysisRoot).invariantSeparatorsPath.ifEmpty { "." }
 
-            logger.info { "Using $managerName to resolve dependencies for path '$relativePath'..." }
-
-            val duration = measureTime {
-                runCatching {
-                    result[definitionFile] = resolveDependencies(definitionFile, labels)
-                }.onFailure {
-                    it.showStackTrace()
-
-                    val id = Identifier.EMPTY.copy(type = managerName, name = relativePath)
-
-                    val projectWithIssues = Project.EMPTY.copy(
-                        id = id,
-                        definitionFilePath = VersionControlSystem.getPathInfo(definitionFile).path,
-                        vcsProcessed = processProjectVcs(definitionFile.parentFile),
-                        scopeDependencies = null,
-                        scopeNames = emptySet()
-                    )
-
-                    val issues = listOf(
-                        createAndLogIssue(
-                            source = managerName,
-                            message = "$managerName failed to resolve dependencies for path '$relativePath': " +
-                                it.collectMessages()
-                        )
-                    )
-
-                    result[definitionFile] = listOf(ProjectAnalyzerResult(projectWithIssues, emptySet(), issues))
-                }
+                resolveDependenciesAsync(this, relativePath, definitionFile, labels)
             }
 
-            logger.info { "$managerName resolved dependencies for path '$relativePath' in $duration." }
+            asyncResult.mapValues { (_, deferred) -> deferred.await() }
         }
 
         afterResolution(definitionFiles)
 
         return createPackageManagerResult(result).addDependencyGraphIfMissing()
+    }
+
+    protected fun resolveDependenciesForDefinitionFile(
+        relativePath: String,
+        definitionFile: File,
+        labels: Map<String, String>
+    ): List<ProjectAnalyzerResult> {
+        logger.info { "Using $managerName to resolve dependencies for path '$relativePath'..." }
+
+        val timedValue = measureTimedValue {
+            runCatching {
+                resolveDependencies(definitionFile, labels)
+            }.getOrElse {
+                it.showStackTrace()
+
+                val id = Identifier.EMPTY.copy(type = managerName, name = relativePath)
+
+                val projectWithIssues = Project.EMPTY.copy(
+                    id = id,
+                    definitionFilePath = VersionControlSystem.getPathInfo(definitionFile).path,
+                    vcsProcessed = processProjectVcs(definitionFile.parentFile),
+                    scopeDependencies = null,
+                    scopeNames = emptySet()
+                )
+
+                val issues = listOf(
+                    createAndLogIssue(
+                        source = managerName,
+                        message = "$managerName failed to resolve dependencies for path '$relativePath': " +
+                            it.collectMessages()
+                    )
+                )
+
+                listOf(ProjectAnalyzerResult(projectWithIssues, emptySet(), issues))
+            }
+        }
+
+        logger.info { "$managerName resolved dependencies for path '$relativePath' in ${timedValue.duration}." }
+
+        return timedValue.value
     }
 
     /**
@@ -331,6 +348,14 @@ abstract class PackageManager(
      * behavior of custom package manager implementations.
      */
     abstract fun resolveDependencies(definitionFile: File, labels: Map<String, String>): List<ProjectAnalyzerResult>
+
+    protected open suspend fun resolveDependenciesAsync(
+        scope: CoroutineScope,
+        relativePath: String,
+        definitionFile: File,
+        labels: Map<String, String>
+    ): Deferred<List<ProjectAnalyzerResult>> =
+        CompletableDeferred(resolveDependenciesForDefinitionFile(relativePath, definitionFile, labels))
 
     protected fun requireLockfile(workingDir: File, condition: () -> Boolean) {
         require(analyzerConfig.allowDynamicVersions || condition()) {

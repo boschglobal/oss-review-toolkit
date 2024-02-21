@@ -26,6 +26,11 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.Properties
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withContext
 
 import org.apache.logging.log4j.kotlin.logger
 
@@ -297,6 +302,15 @@ class GradleInspector(
 
         val result = ProjectAnalyzerResult(project, packages, issues)
         return listOf(result)
+    }
+
+    override suspend fun resolveDependenciesAsync(
+        scope: CoroutineScope,
+        relativePath: String,
+        definitionFile: File,
+        labels: Map<String, String>
+    ): Deferred<List<ProjectAnalyzerResult>> = withContext(Dispatchers.IO) {
+        scope.async {  resolveDependenciesForDefinitionFile(relativePath, definitionFile, labels) }
     }
 }
 

@@ -304,14 +304,7 @@ class GradleInspector(
         return listOf(result)
     }
 
-    override suspend fun resolveDependenciesAsync(
-        scope: CoroutineScope,
-        relativePath: String,
-        definitionFile: File,
-        labels: Map<String, String>
-    ): Deferred<List<ProjectAnalyzerResult>> = withContext(Dispatchers.IO) {
-        scope.async {  resolveDependenciesForDefinitionFile(relativePath, definitionFile, labels) }
-    }
+    override fun concurrency(): Int = 2
 }
 
 /**

@@ -25,10 +25,10 @@ import java.nio.file.Path
 
 import kotlin.io.path.invariantSeparatorsPathString
 import kotlin.time.measureTimedValue
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.newFixedThreadPoolContext
 import kotlinx.coroutines.runBlocking
 
 import org.apache.logging.log4j.kotlin.logger
@@ -277,6 +277,7 @@ abstract class PackageManager(
      * to further stages. They are not interpreted by ORT, but can be used to configure behavior of custom package
      * manager implementations.
      */
+    @OptIn(DelicateCoroutinesApi::class)
     open fun resolveDependencies(definitionFiles: List<File>, labels: Map<String, String>): PackageManagerResult {
         definitionFiles.forEach { definitionFile ->
             requireNotNull(definitionFile.relativeToOrNull(analysisRoot)) {
@@ -286,22 +287,24 @@ abstract class PackageManager(
 
         beforeResolution(definitionFiles)
 
-        val result = runBlocking(Dispatchers.IO) {
-            val asyncResult = definitionFiles.associateWith { definitionFile ->
-                val relativePath = definitionFile.relativeTo(analysisRoot).invariantSeparatorsPath.ifEmpty { "." }
+        val scope = CoroutineScope(newFixedThreadPoolContext(concurrency(), "PackageManager-${managerName}"))
 
-                resolveDependenciesAsync(this, relativePath, definitionFile, labels)
-            }
+        val asyncResult = definitionFiles.associateWith { definitionFile ->
+            val relativePath = definitionFile.relativeTo(analysisRoot).invariantSeparatorsPath.ifEmpty { "." }
 
-            asyncResult.mapValues { (_, deferred) -> deferred.await() }
+            scope.async { resolveDependenciesForDefinitionFile(relativePath, definitionFile, labels) }
         }
+
+        val result = runBlocking { asyncResult.mapValues { (_, deferred) -> deferred.await() } }
 
         afterResolution(definitionFiles)
 
         return createPackageManagerResult(result).addDependencyGraphIfMissing()
     }
 
-    protected fun resolveDependenciesForDefinitionFile(
+    protected open fun concurrency(): Int = 1
+
+    private fun resolveDependenciesForDefinitionFile(
         relativePath: String,
         definitionFile: File,
         labels: Map<String, String>
@@ -348,14 +351,6 @@ abstract class PackageManager(
      * behavior of custom package manager implementations.
      */
     abstract fun resolveDependencies(definitionFile: File, labels: Map<String, String>): List<ProjectAnalyzerResult>
-
-    protected open suspend fun resolveDependenciesAsync(
-        scope: CoroutineScope,
-        relativePath: String,
-        definitionFile: File,
-        labels: Map<String, String>
-    ): Deferred<List<ProjectAnalyzerResult>> =
-        CompletableDeferred(resolveDependenciesForDefinitionFile(relativePath, definitionFile, labels))
 
     protected fun requireLockfile(workingDir: File, condition: () -> Boolean) {
         require(analyzerConfig.allowDynamicVersions || condition()) {

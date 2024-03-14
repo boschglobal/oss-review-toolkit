@@ -165,6 +165,7 @@ internal fun mapSnippetFindings(
     rawResults: RawResults,
     issues: MutableList<Issue>,
     packageSnippetChoice: PackageSnippetChoice?,
+    detectedLicenseMapping: Map<String, String>,
     snippetLicenseFindings: MutableSet<LicenseFinding>
 ): Set<SnippetFinding> {
     val snippetChoices = packageSnippetChoice?.snippetChoices.orEmpty()
@@ -175,16 +176,6 @@ internal fun mapSnippetFindings(
         val findings = mutableMapOf<TextLocation, MutableSet<OrtSnippet>>()
 
         rawSnippets.forEach { snippet ->
-            val license = snippet.artifactLicense?.let { artifactLicense ->
-                DeclaredLicenseProcessor.process(artifactLicense).alsoIfNull {
-                    issues += FossId.createAndLogIssue(
-                        source = "FossId",
-                        message = "Failed to map license '$artifactLicense' as an SPDX expression.",
-                        severity = Severity.HINT
-                    )
-                }
-            } ?: SpdxConstants.NOASSERTION.toSpdx()
-
             // FossID does not return the hash of the remote artifact. Instead, it returns the MD5 hash of the
             // matched file in the remote artifact as part of the "match_file_id" property.
             val url = checkNotNull(snippet.url) {
@@ -228,9 +219,30 @@ internal fun mapSnippetFindings(
                 }
             }
 
+            val ortSnippetLocation = snippetLocation ?: TextLocation(snippet.file, TextLocation.UNKNOWN_LINE)
+
+            val license = snippet.artifactLicense?.let { artifactLicense ->
+                runCatching {
+                    // TODO: The detected license mapping must be applied here, because FossID can return license strings
+                    //       which cannot be parsed to an SpdxExpression. A better solution could be to automatically
+                    //       convert the strings into a form that can be parsed, then the mapping could be applied globally.
+                    LicenseFinding(
+                        artifactLicense.mapLicense(detectedLicenseMapping),
+                        ortSnippetLocation
+                    ).license.normalize()
+                }.onFailure { spdxException ->
+                    issues += FossId.createAndLogIssue(
+                        source = "FossId",
+                        message = "Failed to parse license '$artifactLicense' as an SPDX expression: " +
+                            spdxException.collectMessages(),
+                        severity = Severity.HINT
+                    )
+                }.getOrNull()
+            } ?: SpdxConstants.NOASSERTION.toSpdx()
+
             val ortSnippet = OrtSnippet(
                 snippet.score.toFloat(),
-                snippetLocation ?: TextLocation(snippet.file, TextLocation.UNKNOWN_LINE),
+                ortSnippetLocation,
                 snippetProvenance,
                 purl,
                 license,

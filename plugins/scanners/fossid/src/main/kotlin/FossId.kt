@@ -902,6 +902,7 @@ class FossId internal constructor(
             rawResults,
             issues,
             packageSnippetChoice,
+            detectedLicenseMapping,
             snippetLicenseFindings
         )
         val newlyMarkedFiles = markFilesWithChosenSnippetsAsIdentified(

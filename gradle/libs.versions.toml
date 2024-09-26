@@ -63,6 +63,7 @@ slf4j = "2.0.16"
 springCore = "5.3.39"
 svnkit = "1.10.11"
 sw360Client = "17.0.1-m2"
+tycho = "4.0.8"
 wiremock = "3.9.1"
 xmlutil = "0.90.1"
 xz = "1.10"
@@ -177,6 +178,7 @@ slf4j = { module = "org.slf4j:slf4j-api ", version.ref = "slf4j" }
 springCore = { module = "org.springframework:spring-core", version.ref = "springCore" }
 svnkit = { module = "org.tmatesoft.svnkit:svnkit", version.ref = "svnkit" }
 sw360Client = { module = "org.eclipse.sw360:client", version.ref = "sw360Client" }
+tycho-core = { module = "org.eclipse.tycho:tycho-core", version.ref = "tycho" }
 wiremock = { module = "org.wiremock:wiremock", version.ref = "wiremock" }
 xz = { module = "org.tukaani:xz", version.ref = "xz" }
 

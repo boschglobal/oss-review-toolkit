@@ -32,6 +32,7 @@ dependencies {
     implementation(projects.downloader)
     implementation(projects.utils.commonUtils)
 
+    implementation(libs.tycho.core)
     // The classes from the maven-resolver dependencies are not used directly but initialized by the Plexus IoC
     // container automatically. They are required on the classpath for Maven dependency resolution to work.
     runtimeOnly(libs.bundles.mavenResolver)

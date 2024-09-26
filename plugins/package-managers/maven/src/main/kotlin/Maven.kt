@@ -21,6 +21,7 @@ package org.ossreviewtoolkit.plugins.packagemanagers.maven
 
 import java.io.File
 
+import org.apache.logging.log4j.kotlin.logger
 import org.apache.maven.project.ProjectBuildingResult
 
 import org.eclipse.aether.artifact.Artifact
@@ -106,6 +107,10 @@ class Maven(
         PackageManagerResult(projectResults, graphBuilder.build(), graphBuilder.packages())
 
     override fun resolveDependencies(definitionFile: File, labels: Map<String, String>): List<ProjectAnalyzerResult> {
+        if (isTychoProject()) {
+            prepareTychoDependenciesResolution(definitionFile)
+        }
+
         val workingDir = definitionFile.parentFile
         val projectBuildingResult = mvn.buildMavenProject(definitionFile)
         val mavenProject = projectBuildingResult.project
@@ -163,6 +168,24 @@ class Maven(
         }
 
         return listOf(ProjectAnalyzerResult(project, emptySet(), issues))
+    }
+
+    private fun isTychoProject(): Boolean =
+        analysisRoot.resolve(".mvn/extensions.xml").takeIf { it.isFile }?.let { extensionsFile ->
+            "org.eclipse.tycho" in extensionsFile.readText()
+        } ?: false
+
+    private fun prepareTychoDependenciesResolution(definitionFile: File) {
+        //if (definitionFile.parentFile == analysisRoot) {
+            logger.info { "Resolving Tycho dependencies for $definitionFile." }
+
+            try {
+                val project = mvn.runMavenProject(definitionFile)
+                logger.info { "Tycho preparation completed. Project is $project." }
+            } catch (e: Exception) {
+                logger.error(e) { "Tycho preparation failed." }
+            }
+        //}
     }
 }
 

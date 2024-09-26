@@ -19,12 +19,20 @@
 
 package org.ossreviewtoolkit.plugins.packagemanagers.maven.utils
 
+import com.google.inject.AbstractModule
+import com.google.inject.Provides
+
 import java.io.File
 import java.net.URI
 
+import javax.inject.Inject
+
+import kotlin.jvm.optionals.getOrNull
 import kotlin.time.Duration.Companion.hours
 
 import org.apache.logging.log4j.kotlin.logger
+import org.apache.maven.AbstractMavenLifecycleParticipant
+import org.apache.maven.Maven
 import org.apache.maven.artifact.repository.LegacyLocalRepositoryManager
 import org.apache.maven.bridge.MavenRepositorySystem
 import org.apache.maven.execution.DefaultMavenExecutionRequest
@@ -71,6 +79,7 @@ import org.eclipse.aether.transfer.AbstractTransferListener
 import org.eclipse.aether.transfer.NoRepositoryConnectorException
 import org.eclipse.aether.transfer.TransferEvent
 import org.eclipse.aether.util.repository.JreProxySelector
+import org.eclipse.tycho.core.TychoProjectManager
 
 import org.ossreviewtoolkit.analyzer.PackageManager
 import org.ossreviewtoolkit.downloader.VcsHost
@@ -135,7 +144,7 @@ class MavenSupport(private val workspaceReader: WorkspaceReader) {
                 classWorld = ClassWorld("plexus.core", javaClass.classLoader)
             }
 
-            return DefaultPlexusContainer(configuration).apply {
+            return DefaultPlexusContainer(configuration, TestModule()).apply {
                 loggerManager = object : BaseLoggerManager() {
                     override fun createLogger(name: String) = MavenLogger(logger.delegate.level)
                 }
@@ -337,7 +346,7 @@ class MavenSupport(private val workspaceReader: WorkspaceReader) {
     // The MavenSettingsBuilder class is deprecated, but internally it uses its successor SettingsBuilder. Calling
     // MavenSettingsBuilder requires less code than calling SettingsBuilder, so use it until it is removed.
     @Suppress("DEPRECATION")
-    private fun createMavenExecutionRequest(): MavenExecutionRequest {
+    private fun createMavenExecutionRequest(): DefaultMavenExecutionRequest {
         val request = DefaultMavenExecutionRequest()
 
         val props = System.getProperties()
@@ -457,6 +466,7 @@ class MavenSupport(private val workspaceReader: WorkspaceReader) {
     }
 
     fun buildMavenProject(pomFile: File): ProjectBuildingResult {
+        logger.info { "Building maven project from POM file '$pomFile'." }
         val projectBuilder = containerLookup<ProjectBuilder>()
         val projectBuildingRequest = createProjectBuildingRequest(true)
 
@@ -487,6 +497,17 @@ class MavenSupport(private val workspaceReader: WorkspaceReader) {
                 throw e
             }
         }
+    }
+
+    fun runMavenProject(pomFile: File): MavenProject {
+        val maven = containerLookup<Maven>()
+        val request = createMavenExecutionRequest().apply {
+            setGoals(listOf("package", "dependency:resolve"))
+            setRecursive(true)
+            pom = pomFile
+        }
+        val result = maven.execute(request)
+        return result.project
     }
 
     private fun createProjectBuildingRequest(resolveDependencies: Boolean): ProjectBuildingRequest {
@@ -796,8 +817,10 @@ class MavenSupport(private val workspaceReader: WorkspaceReader) {
      * Create a [MavenSession] and setup the [LegacySupport] and [SessionScope] because this is required to load
      * extensions using Maven Wagon.
      */
-    private fun <R> wrapMavenSession(block: () -> R): R {
-        val request = DefaultMavenExecutionRequest()
+    private fun <R> wrapMavenSession(
+        request: MavenExecutionRequest = DefaultMavenExecutionRequest(),
+        block: (MavenSession) -> R
+    ): R {
         val result = DefaultMavenExecutionResult()
 
         @Suppress("DEPRECATION")
@@ -811,7 +834,7 @@ class MavenSupport(private val workspaceReader: WorkspaceReader) {
 
         try {
             sessionScope.seed(MavenSession::class.java, mavenSession)
-            return block()
+            return block(mavenSession)
         } finally {
             sessionScope.exit()
             legacySupport.session = null
@@ -893,4 +916,20 @@ private class SkipBinaryDownloadsWorkspaceReader(
             File(artifact.artifactId)
         }
     }
+}
+
+private class TestListener @Inject constructor(
+    private val projectManager: TychoProjectManager
+) : AbstractMavenLifecycleParticipant() {
+    override fun afterProjectsRead(session: MavenSession) {
+        val mavenProject = session.currentProject
+        val tychoProject = projectManager.getTychoProject(mavenProject).getOrNull()
+        logger.info { "afterProjectsRead, project is ${session.currentProject}, Tycho project is $tychoProject." }
+    }
+}
+
+private class TestModule : AbstractModule() {
+    @Provides
+    fun provideListener(projectManager: TychoProjectManager): AbstractMavenLifecycleParticipant =
+        TestListener(projectManager)
 }

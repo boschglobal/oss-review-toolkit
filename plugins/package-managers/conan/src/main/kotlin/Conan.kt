@@ -30,6 +30,7 @@ import com.charleskorn.kaml.yamlScalar
 
 import java.io.File
 
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -124,7 +125,9 @@ class Conan(
         ) = Conan(type, analysisRoot, analyzerConfig, repoConfig)
     }
 
-    private val conanHome = Os.userHomeDirectory.resolve(".conan")
+    private val isConan1 by lazy { ConanCommand.getVersion().startsWith("1.") }
+
+    private val conanHome by lazy { Os.userHomeDirectory.resolve(if (isConan1) ".conan" else ".conan2") }
 
     // This is where Conan caches downloaded packages [1]. Note that the package cache is not concurrent, and its
     // layout does not support packages from different remotes that are named (and versioned) the same.
@@ -133,7 +136,11 @@ class Conan(
     //
     // [1]: https://docs.conan.io/en/latest/reference/config_files/conan.conf.html#storage
     // [2]: https://docs.conan.io/en/latest/configuration/download_cache.html#download-cache
-    private val conanStoragePath = conanHome.resolve("data")
+    private val conanStoragePath by lazy { if (isConan1) {
+        conanHome.resolve("data")
+    } else {
+        conanHome.resolve("data").resolve("p")}
+    }
 
     private val pkgInspectResults = mutableMapOf<String, JsonObject>()
 
@@ -171,25 +178,62 @@ class Conan(
             requireLockfile(workingDir) { lockfileName?.let { hasLockfile(workingDir.resolve(it).path) } == true }
 
             val jsonFile = createOrtTempDir().resolve("info.json")
-            if (lockfileName != null) {
-                verifyLockfileBelongsToProject(workingDir, lockfileName)
-                ConanCommand.run(
-                    workingDir,
-                    "info", definitionFile.name,
-                    "-l", lockfileName,
-                    "--json", jsonFile.absolutePath
-                ).requireSuccess()
-            } else {
-                ConanCommand.run(
-                    workingDir,
-                    "info", definitionFile.name,
-                    "--json", jsonFile.absolutePath,
-                    *DUMMY_COMPILER_SETTINGS
-                ).requireSuccess()
-            }
 
-            val pkgInfos = parsePackageInfos(jsonFile)
-            jsonFile.parentFile.safeDeleteRecursively()
+            val pkgInfos = if (isConan1) {
+                if (lockfileName != null) {
+                    verifyLockfileBelongsToProject(workingDir, lockfileName)
+                    ConanCommand.run(
+                        workingDir,
+                        "info", definitionFile.name,
+                        "-l", lockfileName,
+                        "--json", jsonFile.absolutePath
+                    ).requireSuccess()
+                } else {
+                    ConanCommand.run(
+                        workingDir,
+                        "info",
+                        definitionFile.name,
+                        "--json",
+                        jsonFile.absolutePath,
+                        *DUMMY_COMPILER_SETTINGS
+                    ).requireSuccess()
+                }
+                parsePackageInfos(jsonFile).also { jsonFile.parentFile.safeDeleteRecursively() }
+            } else {
+                // Create a default build profile.
+                if (!conanHome.resolve("profiles/default").exists()) {
+                    ConanCommand.run(workingDir, "profile", "detect")
+                }
+
+                if (lockfileName != null) {
+                    verifyLockfileBelongsToProject(workingDir, lockfileName)
+                    ConanCommand.run(
+                        workingDir,
+                        "graph",
+                        "info",
+                        "-f",
+                        "json",
+                        "-l",
+                        lockfileName,
+                        "--out-file",
+                        jsonFile.absolutePath,
+                        definitionFile.name
+                    )
+                } else {
+                    ConanCommand.run(
+                        workingDir,
+                        "graph",
+                        "info",
+                        "-f",
+                        "json",
+                        "--out-file",
+                        jsonFile.absolutePath,
+                        *DUMMY_COMPILER_SETTINGS,
+                        definitionFile.name
+                    )
+                }
+                parsePackageInfosV2(jsonFile).also { jsonFile.parentFile.safeDeleteRecursively() }
+            }
 
             val packageList = removeProjectPackage(pkgInfos, definitionFile.name)
             val packages = parsePackages(packageList, workingDir)
@@ -244,17 +288,29 @@ class Conan(
             }
 
             // List configured remotes in "remotes.txt" format.
-            ConanCommand.run("remote", "list", "--raw").requireSuccess()
-        }.getOrElse {
-            logger.warn { "Failed to list remotes." }
-            return
-        }
+            val remoteList = runCatching {
+                if (isConan1) {
+                    // List configured remotes in "remotes.txt" format.
+                    ConanCommand.run("remote", "list", "--raw").requireSuccess()
+                } else {
+                    // List configured remotes in JSON format.
+                    ConanCommand.run("remote", "list", "-f", "json").requireSuccess()
+                }
+            }.getOrElse {
+                logger.warn { "Failed to list remotes." }
+                return
+            }
 
-        val remotes = parseConanRemoteList(remoteList.stdout)
-        configureUserAuthentication(remotes)
+            val remotes = if (isConan1) {
+                parseConan1RemoteList(remoteList.stdout)
+            } else {
+                parseConan2RemoteList(remoteList.stdout)
+            }
+            configureUserAuthentication(remotes)
+        }
     }
 
-    private fun parseConanRemoteList(remoteList: String): List<Pair<String, String>> =
+    private fun parseConan1RemoteList(remoteList: String): List<Pair<String, String>> =
         remoteList.lines().mapNotNull { line ->
             // Extract the remote URL.
             val trimmedLine = line.trim()
@@ -270,6 +326,19 @@ class Conan(
 
             remoteName to remoteUrl
         }
+
+    private fun parseConan2RemoteList(remoteList: String): List<Pair<String, String>> {
+        @Serializable
+        data class Remote(
+            val name: String,
+            val url: String,
+            val verify_ssl: Boolean,
+            val enabled: Boolean
+        )
+
+        val remotes = Json.decodeFromString<List<Remote>>(remoteList)
+        return remotes.filter { it.enabled }.map { it.name to it.url }
+    }
 
     private fun configureUserAuthentication(remotes: List<Pair<String, String>>) =
         remotes.forEach { (remoteName, remoteUrl) ->
@@ -335,7 +404,7 @@ class Conan(
         val homepageUrl = pkgInfo.homepage.orEmpty()
 
         val id = parsePackageId(pkgInfo, workingDir)
-        val conanData = readConanData(id.name, id.version, conanStoragePath)
+        val conanData = readConanData(id.name, id.version, conanStoragePath, pkgInfo.recipeFolder)
 
         return Package(
             id = id,
@@ -359,7 +428,39 @@ class Conan(
             // see https://github.com/conan-io/conan/issues/6972.
             val jsonFile = createOrtTempDir().resolve("inspect.json")
 
-            ConanCommand.run(workingDir, "inspect", pkgName, "--json", jsonFile.absolutePath).requireSuccess()
+            if (isConan1) {
+                ConanCommand.run(
+                    workingDir,
+                    "inspect",
+                    pkgName,
+                    field,
+                    "--json",
+                    jsonFile.absolutePath
+                ).requireSuccess()
+            } else {
+                val path = if ("conanfile" in pkgName) {
+                    pkgName
+                } else {
+                    // For Conan 2, "conan inspect" need the path of the reference. See https://github.com/conan-io/conan/issues/12532.
+                    val cacheProcess = ConanCommand.run(
+                        workingDir,
+                        "cache",
+                        "path",
+                        pkgName,
+                    ).requireSuccess()
+                    cacheProcess.stdout.trim()
+                }
+
+                ConanCommand.run(
+                    workingDir,
+                    "inspect",
+                    path,
+                    "-f",
+                    "json",
+                    "--out-file",
+                    jsonFile.absolutePath
+                ).requireSuccess()
+            }
 
             Json.parseToJsonElement(jsonFile.readText()).jsonObject.also {
                 jsonFile.parentFile.safeDeleteRecursively()
@@ -377,7 +478,11 @@ class Conan(
     private fun findProjectPackageInfo(pkgInfos: List<PackageInfo>, definitionFileName: String): PackageInfo =
         pkgInfos.first {
             // Use "in" because conanfile.py's reference string often includes other data.
-            definitionFileName in it.reference.orEmpty()
+            if (isConan1) {
+                definitionFileName in it.reference.orEmpty()
+            } else {
+                definitionFileName in it.displayName
+            }
         }
 
     /**
@@ -455,6 +560,41 @@ class Conan(
      */
     private fun parseAuthors(pkgInfo: PackageInfo): Set<String> =
         parseAuthorString(pkgInfo.author).mapNotNullTo(mutableSetOf()) { it.name }
+
+    private fun readConanData(
+        name: String,
+        version: String,
+        conanStorageDir: File,
+        recipeFolder: String? = null
+    ): ConanData {
+        val conanDataFile = if (isConan1) {
+            conanStorageDir.resolve("$name/$version/_/_/export/conandata.yml")
+        } else {
+            if(recipeFolder == null) {
+                logger.error {
+                    "readConanData() cannot be called on the first package info, i.e. the conanfile itself."
+                }
+                return ConanData(null, null, false)
+            }
+            File(recipeFolder).resolve("conandata.yml")
+        }
+        val root = Yaml.default.parseToYamlNode(conanDataFile.readText()).yamlMap
+
+        val patchesForVersion = root.get<YamlMap>("patches")?.get<YamlList>(version)
+        val hasPatches = !patchesForVersion?.items.isNullOrEmpty()
+
+        val sourceForVersion = root.get<YamlMap>("sources")?.get<YamlMap>(version)
+        val sha256 = sourceForVersion?.get<YamlScalar>("sha256")?.content
+
+        val url = sourceForVersion?.get<YamlNode>("url")?.let {
+            when {
+                it is YamlList -> it.yamlList.items.firstOrNull()?.yamlScalar?.content
+                else -> it.yamlScalar.content
+            }
+        }
+
+        return ConanData(url, sha256, hasPatches)
+    }
 }
 
 private data class ConanData(
@@ -463,22 +603,3 @@ private data class ConanData(
     val hasPatches: Boolean
 )
 
-private fun readConanData(name: String, version: String, conanStorageDir: File): ConanData {
-    val conanDataFile = conanStorageDir.resolve("$name/$version/_/_/export/conandata.yml")
-    val root = Yaml.default.parseToYamlNode(conanDataFile.readText()).yamlMap
-
-    val patchesForVersion = root.get<YamlMap>("patches")?.get<YamlList>(version)
-    val hasPatches = !patchesForVersion?.items.isNullOrEmpty()
-
-    val sourceForVersion = root.get<YamlMap>("sources")?.get<YamlMap>(version)
-    val sha256 = sourceForVersion?.get<YamlScalar>("sha256")?.content
-
-    val url = sourceForVersion?.get<YamlNode>("url")?.let {
-        when {
-            it is YamlList -> it.yamlList.items.firstOrNull()?.yamlScalar?.content
-            else -> it.yamlScalar.content
-        }
-    }
-
-    return ConanData(url, sha256, hasPatches)
-}

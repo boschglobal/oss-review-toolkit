@@ -24,6 +24,12 @@ import io.kotest.matchers.should
 
 import org.ossreviewtoolkit.analyzer.create
 import org.ossreviewtoolkit.analyzer.resolveSingleProject
+import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
+import org.ossreviewtoolkit.model.config.Excludes
+import org.ossreviewtoolkit.model.config.PackageManagerConfiguration
+import org.ossreviewtoolkit.model.config.RepositoryConfiguration
+import org.ossreviewtoolkit.model.config.ScopeExclude
+import org.ossreviewtoolkit.model.config.ScopeExcludeReason
 import org.ossreviewtoolkit.model.toYaml
 import org.ossreviewtoolkit.utils.test.getAssetFile
 import org.ossreviewtoolkit.utils.test.matchExpectedResult
@@ -102,6 +108,31 @@ class BazelFunTest : StringSpec({
 
         val result = create("Bazel").resolveSingleProject(definitionFile)
 
+        result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
+    }
+
+    "Dependencies are detected correctly if the Bazel project has Conan dependencies" {
+        val definitionFile = getAssetFile("projects/synthetic/bazel-conan-dependencies/MODULE.bazel")
+        val expectedResultFile = getAssetFile(
+            "projects/synthetic/bazel-expected-output-conan-dependencies.yml"
+        )
+
+        val result = create(
+            "Bazel",
+            AnalyzerConfiguration(
+                allowDynamicVersions = false,
+                skipExcluded = false,
+                packageManagers = mapOf(
+                    "Bazel" to PackageManagerConfiguration(options = emptyMap()),
+                    "Conan" to PackageManagerConfiguration(options = emptyMap())
+                )
+            ), RepositoryConfiguration(
+                excludes = Excludes(
+                    scopes = emptyList()
+                )
+            )
+
+        ).resolveSingleProject(definitionFile)
         result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
     }
 })

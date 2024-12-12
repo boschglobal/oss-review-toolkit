@@ -28,6 +28,9 @@ import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.analyzer.AbstractPackageManagerFactory
 import org.ossreviewtoolkit.analyzer.PackageManager
+import org.ossreviewtoolkit.analyzer.PackageManagerDependency
+import org.ossreviewtoolkit.analyzer.determineEnabledPackageManagers
+import org.ossreviewtoolkit.analyzer.toPackageReference
 import org.ossreviewtoolkit.clients.bazelmoduleregistry.ArchiveOverride
 import org.ossreviewtoolkit.clients.bazelmoduleregistry.ArchiveSourceInfo
 import org.ossreviewtoolkit.clients.bazelmoduleregistry.BazelModuleRegistryService
@@ -72,6 +75,7 @@ import org.semver4j.RangesListFactory
 private const val BAZEL_FALLBACK_VERSION = "7.0.1"
 private const val LOCKFILE_NAME = "MODULE.bazel.lock"
 private const val BUILDOZER_MISSING_VALUE = "(missing)"
+private const val DEFAULT_CONAN_LOCK_FILE_NAME = "conan.lock"
 
 internal object BazelCommand : CommandLineTool {
     override fun command(workingDir: File?) = "bazel"
@@ -108,6 +112,10 @@ class Bazel(
     analyzerConfig: AnalyzerConfiguration,
     repoConfig: RepositoryConfiguration
 ) : PackageManager(name, "Bazel", analysisRoot, analyzerConfig, repoConfig) {
+    companion object {
+        const val CONAN_LOCK_FILE_NAME = "conanLockfileName"
+    }
+
     class Factory : AbstractPackageManagerFactory<Bazel>("Bazel") {
         override val globsForDefinitionFiles = listOf("MODULE", "MODULE.bazel")
 
@@ -116,6 +124,10 @@ class Bazel(
             analyzerConfig: AnalyzerConfiguration,
             repoConfig: RepositoryConfiguration
         ) = Bazel(type, analysisRoot, analyzerConfig, repoConfig)
+    }
+
+    private val conanFactory = analyzerConfig.determineEnabledPackageManagers().firstOrNull {
+        it.type.startsWith("Conan")
     }
 
     /**
@@ -397,6 +409,7 @@ class Bazel(
             "json",
             "--disk_cache=",
             "--lockfile_mode=update",
+            "--extension_info=usages",
             workingDir = projectDir
         ).requireSuccess()
 
@@ -416,10 +429,15 @@ class Bazel(
             depDirectives[it.key]?.devDependency != true
         }
 
+        val conanDependencies = processConanDependencies(projectDir, mainModule)
+        val mainDependencies = mainDeps.mapTo(mutableSetOf()) { it.toPackageReference(archiveOverrides) }
+        conanDependencies?.let {
+            mainDependencies += it
+        }
         return setOf(
             Scope(
                 name = "main",
-                dependencies = mainDeps.mapTo(mutableSetOf()) { it.toPackageReference(archiveOverrides) }
+                dependencies =  mainDependencies
             ),
             Scope(
                 name = "dev",
@@ -462,6 +480,47 @@ class Bazel(
 
             is ArchiveSourceInfo -> null
         }
+
+    /**
+     * Check if the Bazel project in [mainModule] has some Conan dependencies. If it does, load them from a Conan
+     * definition file in [projectDir].
+     */
+    private fun processConanDependencies(projectDir: File, mainModule: BazelModule): PackageReference? {
+        if (conanFactory == null) {
+            logger.info { "Not fetching Conan dependencies since Conan package manager is not enabled." }
+            return null
+        }
+
+        val conanDefinitionFile = (conanFactory as AbstractPackageManagerFactory<PackageManager>).matchersForDefinitionFiles.mapNotNull { glob ->
+                val filesMatchingGlob = projectDir.listFiles()?.filter { glob.matches(it.toPath()) }.orEmpty()
+                filesMatchingGlob.takeIf { it.isNotEmpty() }
+            }.flatten().firstOrNull()
+        val conanExtension = mainModule.extensionUsages.firstOrNull { "conan_deps_module_extension.bzl" in it.key }
+
+        if (conanExtension == null || conanDefinitionFile == null) {
+            return null
+        }
+
+        val bazelConanLockfileName = options[CONAN_LOCK_FILE_NAME] ?: DEFAULT_CONAN_LOCK_FILE_NAME
+
+        val conanAnalyzerConfig = analyzerConfig.withPackageManagerOption(
+            conanFactory.type,
+            "lockfileName",
+            bazelConanLockfileName
+        )
+
+        val conan = conanFactory.create(projectDir, conanAnalyzerConfig, repoConfig)
+        val results = conan.resolveDependencies(conanDefinitionFile, emptyMap())
+
+        // TODO get the Conan packages from the result.
+
+        return PackageManagerDependency(
+            packageManager = conanFactory.type,
+            definitionFile = VersionControlSystem.getPathInfo(conanDefinitionFile).path,
+            scope = "main",
+            linkage = PackageLinkage.STATIC
+        ).toPackageReference()
+    }
 }
 
 private fun String.expandRepositoryUrl(): String = withoutPrefix("github:")?.let { "https://github.com/$it" } ?: this

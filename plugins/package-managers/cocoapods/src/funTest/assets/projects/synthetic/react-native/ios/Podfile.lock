@@ -17,6 +17,8 @@ DEPENDENCIES:
 EXTERNAL SOURCES:
   fmt:
       :podspec: "../node_modules/react-native/third-party-podspecs/fmt.podspec"
+  React-Core:
+      :path: "../node_modules/react-native/"
   React-RCTActionSheet:
       :path: "../node_modules/react-native/Libraries/ActionSheetIOS"
 

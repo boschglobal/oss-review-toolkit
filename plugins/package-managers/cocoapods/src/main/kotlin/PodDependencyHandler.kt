@@ -41,6 +41,7 @@ import org.ossreviewtoolkit.model.orEmpty
 import org.ossreviewtoolkit.model.utils.DependencyHandler
 import org.ossreviewtoolkit.model.utils.toPurl
 import org.ossreviewtoolkit.utils.common.searchUpwardsForSubdirectory
+import org.ossreviewtoolkit.utils.common.splitOnWhitespace
 
 internal class PodDependencyHandler : DependencyHandler<Lockfile.Pod> {
     private val podspecCache = mutableMapOf<String, Podspec>()
@@ -87,7 +88,12 @@ internal class PodDependencyHandler : DependencyHandler<Lockfile.Pod> {
             // Lazily only call the pod CLI if the podspec is not available from the external source.
             val podspecFile = sequence {
                 yield(dependency.externalSource?.podspec)
-                yield(dependency.externalSource?.path?.let { "$it/$basePodName.podspec" })
+                yield(dependency.externalSource?.path?.let {
+                    logger.info(basePodName)
+                    logger.info(it)
+                    logger.info("${it.removeSuffix("/")}/$basePodName.podspec")
+                    "${it.removeSuffix("/")}/$basePodName.podspec"
+                })
                 yield(getPodspecPath(basePodName, dependency.version))
             }.firstNotNullOfOrNull { path ->
                 path?.let { File(it) }?.takeIf { it.isFile }
@@ -130,7 +136,18 @@ internal class PodDependencyHandler : DependencyHandler<Lockfile.Pod> {
     private fun File.convertRubyPodspecFile(content: String): String? {
         // The podspec is in Ruby format.
         // Because it may depend on React Native functions, an extra require may have to be injected.
-        val rubyContent = parentFile.searchUpwardsForSubdirectory("node_modules")?.let { nodeModulesParentDir ->
+        logger.info("Current podspec file is in Ruby format at '$absolutePath'.")
+        logger.info("Search for React Native in the parent directory '$parentFile'.")
+
+        val rubyContent = generateSequence(parentFile) {it.parentFile }
+            .map { it.resolve("node_modules/react-native/scripts/react_native_pods.rb") }
+            .firstOrNull { it.isFile }
+            ?.let { reactNativePath ->
+                "require '$reactNativePath'\n$content"
+            } ?: content
+        /*
+        parentFile.searchUpwardsForSubdirectory("node_modules")?.let { nodeModulesParentDir ->
+            logger.info("Searching for React Native in '$nodeModulesParentDir'.")
             val reactNativePath =
                 nodeModulesParentDir.resolve("node_modules/react-native/scripts/react_native_pods.rb")
             if (reactNativePath.isFile) {
@@ -141,17 +158,20 @@ internal class PodDependencyHandler : DependencyHandler<Lockfile.Pod> {
                 // when the podspec file is run from its original location inside the node_modules directory.
                 // When relocating the podspec file to a temporary location, replace __dir__ with the actual parent path
                 // of the original podspec file to preserve correct resolution of paths.
-                "require '$reactNativePath'\n$content".replace("__dir__", "'$parent'")
+                logger.info("Injecting require for React Native in podspec file at '$canonicalPath'.")
+                "require '$reactNativePath'\n$content"
             } else {
                 null
             }
         } ?: content
+        */
 
-        val patchedPodspecFile = createTempFile("ruby_podspec", ".podspec").apply { writeText(rubyContent) }
+        logger.info(rubyContent.split("\n").take(9).joinToString { line -> line.trim() })
+        val patchedPodspecFile = File(parentFile, "ort__$name").apply { writeText(rubyContent) }
 
         return runCatching {
             // Convert the Ruby podspec file to JSON.
-            CocoaPodsCommand.run(parentFile, "ipc", "spec", patchedPodspecFile.pathString)
+            CocoaPodsCommand.run(parentFile, "ipc", "spec", patchedPodspecFile.absolutePath)
                 .requireSuccess()
                 .stdout
         }.onFailure { e ->

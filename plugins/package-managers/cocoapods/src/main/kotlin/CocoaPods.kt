@@ -20,6 +20,7 @@
 package org.ossreviewtoolkit.plugins.packagemanagers.cocoapods
 
 import java.io.File
+import java.nio.file.Path
 
 import kotlin.io.resolveSibling
 
@@ -134,17 +135,18 @@ class CocoaPods(override val descriptor: PluginDescriptor = CocoaPodsFactory.des
             val lockfileData = lockfile.readText().parseLockfile()
 
             // Resolve paths of external sources relative to the lockfile.
-            val lockfileWithResolvedPaths = lockfileData.copy(
-                externalSources = lockfileData.externalSources.mapValues { entry ->
-                    Lockfile.ExternalSource(
-                        entry.value.path?.let { lockfile.resolveSibling(it).path },
-                        entry.value.podspec?.let { lockfile.resolveSibling(it).path }
-                    )
-                }
-            )
+//            val lockfileWithResolvedPaths = lockfileData.copy(
+//                externalSources = lockfileData.externalSources.mapValues { entry ->
+//                    Lockfile.ExternalSource(
+//                        entry.value.path?.let { lockfile.resolveSibling(it).path },
+//                        entry.value.podspec?.let { lockfile.resolveSibling(it).path }
+//                    )
+//                }
+//            )
+            val lockfileWithResolvedPaths = lockfileData.withResolvedPaths(lockfile)
 
             // Convert direct dependencies with version constraints to pods with resolved versions.
-            val dependencies = lockfileData.dependencies.mapNotNull {
+            val dependencies = lockfileWithResolvedPaths.dependencies.mapNotNull {
                 it.resolvedPod?.run {
                     lockfileWithResolvedPaths.Pod(
                         name,
@@ -168,4 +170,41 @@ class CocoaPods(override val descriptor: PluginDescriptor = CocoaPodsFactory.des
 
     override fun createPackageManagerResult(projectResults: Map<File, List<ProjectAnalyzerResult>>) =
         PackageManagerResult(projectResults, graphBuilder.build(), graphBuilder.packages())
+}
+
+internal fun Lockfile.withResolvedPaths(lockfilePath: File): Lockfile {
+    val resolvedExternalSources = externalSources.mapValues { entry ->
+        Lockfile.ExternalSource(
+            entry.value.path?.let { lockfilePath.resolveSibling(it).path },
+            entry.value.podspec?.let { lockfilePath.resolveSibling(it).path }
+        )
+    }
+
+    val pods = mutableListOf<Lockfile.Pod>()
+    val dependencies = mutableListOf<Lockfile.Dependency>()
+
+    val lockFile = Lockfile(pods, dependencies, resolvedExternalSources, checkoutOptions)
+
+    this.pods.forEach { pod ->
+        val resolvedPod = lockFile.Pod(
+            pod.name,
+            pod.version,
+            pod.dependencies.map { dependency ->
+                lockFile.Dependency(
+                    dependency.name,
+                    dependency.versionConstraint
+                )
+            }
+        )
+
+        pods += resolvedPod
+    }
+
+    this.dependencies.forEach { dependency ->
+        val resolvedDependency = lockFile.Dependency(dependency.name, dependency.versionConstraint)
+
+        dependencies += resolvedDependency
+    }
+
+    return lockFile
 }

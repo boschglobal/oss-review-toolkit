@@ -171,7 +171,7 @@ internal class PodDependencyHandler : DependencyHandler<Lockfile.Pod> {
 
         return runCatching {
             // Convert the Ruby podspec file to JSON.
-            CocoaPodsCommand.run(parentFile, "ipc", "spec", patchedPodspecFile.absolutePath)
+            CocoaPodsCommand.run(parentFile, "ipc", "spec", "--silent", patchedPodspecFile.absolutePath)
                 .requireSuccess()
                 .stdout
         }.onFailure { e ->

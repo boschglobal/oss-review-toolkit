@@ -28,7 +28,7 @@ import org.ossreviewtoolkit.clients.fossid.model.summary.SummaryIdentifiedFile
 
 data class MarkedAsIdentifiedFile(
     val comment: String?,
-    val comments: Map<Int, Comment> = emptyMap(),
+    val comments: List<Comment> = emptyList(),
 
     val identificationId: Int,
 

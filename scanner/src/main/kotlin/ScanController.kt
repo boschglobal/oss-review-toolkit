@@ -34,6 +34,7 @@ import org.ossreviewtoolkit.model.config.ScannerConfiguration
 import org.ossreviewtoolkit.model.toYaml
 import org.ossreviewtoolkit.scanner.provenance.NestedProvenance
 import org.ossreviewtoolkit.scanner.provenance.NestedProvenanceScanResult
+import org.ossreviewtoolkit.scanner.utils.alignRevisions
 import org.ossreviewtoolkit.utils.common.PATH_STRING_COMPARATOR
 
 /**
@@ -181,7 +182,7 @@ internal class ScanController(
         results: List<ScanResult>
     ): List<ScanResult> {
         val newResults = results.filter {
-            scannedProvenances.add(it.provenance to it.scanner)
+            scannedProvenances.add(it.provenance.alignRevisions() to it.scanner)
         }
 
         if (newResults.size < results.size) {

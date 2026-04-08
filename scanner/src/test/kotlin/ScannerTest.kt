@@ -307,6 +307,43 @@ class ScannerTest : WordSpec({
 
             storedScanResults.getDuplicates() should beEmpty()
         }
+
+        "not produce duplicate scan results when the same repository is referenced with different revision strings" {
+            val packageScanner = FakePackageScannerWrapper()
+
+            // pkgWithUnalignedRevision uses VcsInfo.valid() whose revision differs from the resolved revision
+            // "resolvedRevision" returned by FakePackageProvenanceResolver.
+            val pkgWithUnalignedRevision = Package.new(name = "project1").withValidVcs()
+
+            // pkgWithAlignedRevision references the same URL but with revision already equal to resolvedRevision,
+            // which is the scenario where a branch name was resolved to a commit hash in a previous scan and the
+            // package is now referenced by that hash directly.
+            val pkgWithAlignedRevision = Package.new(name = "project2").withValidVcs()
+                .withVcsRevision("resolvedRevision")
+
+            val packages = setOf(pkgWithUnalignedRevision, pkgWithAlignedRevision)
+            val pkgIds = packages.map(Package::id)
+
+            val result1 = createScanResult(pkgWithUnalignedRevision.repositoryProvenance(), packageScanner.details)
+            val result2 = result1.copy(
+                summary = result1.summary.copy(
+                    startTime = Instant.ofEpochSecond(20260210074611L),
+                    endTime = Instant.ofEpochSecond(20260210074647L)
+                )
+            )
+
+            val scannerWrapper = spyk(packageScanner) {
+                every { scanPackage(any(), any()) } returnsMany listOf(result1, result2)
+            }
+
+            val scanner = createScanner(packageScannerWrappers = listOf(scannerWrapper))
+
+            val scannerRun = scanner.scan(packages, createContext())
+
+            scannerRun.shouldNotBeNull {
+                getAllScanResults().keys shouldContainExactlyInAnyOrder pkgIds
+            }
+        }
     }
 
     "Scanning with a provenance scanner" should {

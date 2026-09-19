@@ -41,6 +41,7 @@ import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
 import org.ossreviewtoolkit.model.utils.toPurl
 import org.ossreviewtoolkit.plugins.packagemanagers.python.utils.PACKAGE_TYPE
 import org.ossreviewtoolkit.plugins.packagemanagers.python.utils.PythonCoreMetadata
+import org.ossreviewtoolkit.plugins.packagemanagers.python.utils.PythonRequirement
 import org.ossreviewtoolkit.plugins.packagemanagers.python.utils.processDeclaredLicenses
 
 private val logger = loggerOf(MethodHandles.lookup().lookupClass())
@@ -273,4 +274,38 @@ private fun PylockFile.Package.toPackageReference(
         .mapTo(mutableSetOf()) { it.toPackageReference(dependencies, ancestorsAndSelf) }
 
     return PackageReference(id = toIdentifier(), dependencies = dependencyReferences)
+}
+
+/**
+ * Return a message for each package among these requirements that is not satisfied by the given [lockedVersions] per
+ * normalized package name, i.e. that is not locked at all or in none of its pinned versions. A package whose
+ * requirements are all conditional on a marker is not reported as missing, as it may be absent on purpose. So are
+ * requirements on the project named [projectName] itself and pins on local source trees.
+ */
+internal fun List<PythonRequirement>.findUnsatisfied(
+    lockedVersions: Map<String, Set<String>>,
+    projectName: String?
+): List<String> {
+    val normalizedProjectName = projectName?.normalizePythonPackageName()
+
+    return groupBy { it.name }.mapNotNull { (name, requirements) ->
+        if (name == normalizedProjectName) return@mapNotNull null
+
+        val locked = lockedVersions[name]
+        val pins = requirements.filter { it.pinnedVersion != null }
+
+        when {
+            locked == null -> "'$name' is required but not locked.".takeUnless {
+                requirements.all(PythonRequirement::hasMarker)
+            }
+
+            "" in locked -> null
+
+            pins.isNotEmpty() && pins.none { pin -> locked.any { pin.isSatisfiedBy(it) } } ->
+                "'$name' is pinned to version ${pins.map { it.pinnedVersion }.distinct().joinToString()} but locked " +
+                    "at version ${locked.joinToString()}."
+
+            else -> null
+        }
+    }
 }

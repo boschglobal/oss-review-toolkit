@@ -31,6 +31,7 @@ import io.kotest.core.spec.style.WordSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.collections.beEmpty
 import io.kotest.matchers.collections.containExactly
+import io.kotest.matchers.collections.containExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldBeSingleton
 import io.kotest.matchers.nulls.beNull
 import io.kotest.matchers.should
@@ -58,14 +59,19 @@ class PylockTest : WordSpec({
     beforeEach { server.resetAll() }
     afterSpec { server.stop() }
 
-    fun createPylock() = Pylock(config = PylockConfig(indexUrl = null), indexClientFactory = { PythonIndexClient() })
+    fun createPylock(checkConsistency: Boolean = true) =
+        Pylock(
+            config = PylockConfig(indexUrl = null, checkConsistency = checkConsistency),
+            indexClientFactory = { PythonIndexClient() }
+        )
 
-    fun writeLockfile(dir: File, name: String = "pylock.toml"): File =
+    fun writeLockfile(dir: File, name: String = "pylock.toml", header: String = ""): File =
         (dir / name).apply {
             writeText(
                 """
                     lock-version = "1.0"
                     created-by = "uv"
+                    $header
 
                     [[packages]]
                     name = "attrs"
@@ -155,23 +161,6 @@ class PylockTest : WordSpec({
             result.project.id.name shouldBe "pylock.toml"
         }
 
-        "ignore a blank index URL option" {
-            server.stubFor(get(urlPathEqualTo("$WHEEL_PATH.metadata")).willReturn(aResponse().withStatus(404)))
-
-            var configuredIndexUrl: String? = "unset"
-            val pylock = Pylock(
-                config = PylockConfig(indexUrl = " "),
-                indexClientFactory = {
-                    configuredIndexUrl = it
-                    PythonIndexClient()
-                }
-            )
-
-            pylock.resolveSingleProject(writeLockfile(tempdir()))
-
-            configuredIndexUrl should beNull()
-        }
-
         "report packages whose metadata cannot be retrieved" {
             server.stubFor(get(urlPathEqualTo("$WHEEL_PATH.metadata")).willReturn(aResponse().withStatus(404)))
             server.stubFor(get(urlPathEqualTo("/pypi/attrs/26.1.0/json")).willReturn(aResponse().withStatus(404)))
@@ -184,6 +173,52 @@ class PylockTest : WordSpec({
                 it.message shouldContain "1 package(s)"
                 it.message shouldContain "PyPI::attrs:26.1.0"
             }
+        }
+
+        "report a lockfile that does not match the declared requirements" {
+            server.stubFor(get(urlPathEqualTo("$WHEEL_PATH.metadata")).willReturn(aResponse().withStatus(404)))
+
+            val dir = tempdir()
+
+            (dir / PYPROJECT_FILENAME).writeText(
+                """
+                    [project]
+                    name = "pylock-example"
+                    dependencies = ["attrs==25.1.0", "workspace-member", "colorama; sys_platform == 'win32'"]
+
+                    [project.optional-dependencies]
+                    yaml = ["pyyaml"]
+
+                    [dependency-groups]
+                    dev = ["pytest"]
+                """.trimIndent()
+            )
+
+            (dir / "requirements.txt").writeText("attrs==26.1.0\nrequests\n")
+
+            val result = createPylock().resolveSingleProject(writeLockfile(dir))
+
+            val messages = result.issues.filter { "does not match" in it.message }.map { it.message }
+
+            // The optional dependency and the dependency group are not covered by the lockfile, and the conditional
+            // dependency may be absent on purpose, so none of them is checked.
+            messages should containExactlyInAnyOrder(
+                "The lockfile 'pylock.toml' does not match 'pyproject.toml', so it is probably outdated:\n" +
+                    "- 'attrs' is pinned to version 25.1.0 but locked at version 26.1.0.",
+                "The lockfile 'pylock.toml' does not match 'requirements.txt', so it is probably outdated:\n" +
+                    "- 'requests' is required but not locked."
+            )
+        }
+
+        "not check the lockfile against other files if disabled" {
+            server.stubFor(get(urlPathEqualTo("$WHEEL_PATH.metadata")).willReturn(aResponse().withStatus(404)))
+
+            val dir = tempdir()
+            (dir / "requirements.txt").writeText("attrs==25.1.0\nrequests\n")
+
+            val result = createPylock(checkConsistency = false).resolveSingleProject(writeLockfile(dir))
+
+            result.issues.filter { "does not match" in it.message } should beEmpty()
         }
 
         "unify packages that several lockfiles lock with different distribution files" {
@@ -211,7 +246,7 @@ class PylockTest : WordSpec({
                 )
             }
 
-            val result = createPylock().resolveDependencies(
+            val result = createPylock(checkConsistency = false).resolveDependencies(
                 root,
                 listOf(lockfile, otherLockfile),
                 Excludes.EMPTY,
@@ -226,6 +261,149 @@ class PylockTest : WordSpec({
                 it.id shouldBe Identifier("PyPI", "", "attrs", "26.1.0")
                 it.binaryArtifact.url shouldBe "${server.baseUrl()}/pyodide$WHEEL_PATH"
                 it.sourceArtifact.url shouldBe "${server.baseUrl()}/pyodide$SDIST_PATH"
+            }
+        }
+
+        "report a lockfile that does not match the lockfile it was exported from" {
+            server.stubFor(get(urlPathEqualTo("$WHEEL_PATH.metadata")).willReturn(aResponse().withStatus(404)))
+
+            val dir = tempdir()
+
+            (dir / "uv.lock").writeText(
+                """
+                    version = 1
+
+                    [[package]]
+                    name = "attrs"
+                    version = "26.2.0"
+                    source = { registry = "https://pypi.org/simple" }
+
+                    [[package]]
+                    name = "pylock-example"
+                    version = "1.0.0"
+                    source = { editable = "." }
+                    dependencies = [
+                        { name = "attrs" },
+                        { name = "six" },
+                        { name = "workspace-member" },
+                    ]
+
+                    [[package]]
+                    name = "six"
+                    version = "1.17.0"
+                    source = { registry = "https://pypi.org/simple" }
+
+                    [[package]]
+                    name = "workspace-member"
+                    version = "0.1.0"
+                    source = { editable = "packages/member" }
+                """.trimIndent()
+            )
+
+            val result = createPylock().resolveSingleProject(writeLockfile(dir))
+
+            result.issues.filter { "does not match" in it.message }.map { it.message }.shouldBeSingleton {
+                it shouldBe "The lockfile 'pylock.toml' does not match 'uv.lock', so it is probably outdated:\n" +
+                    "- 'attrs' has version 26.2.0 in 'uv.lock' but version 26.1.0 in 'pylock.toml'.\n" +
+                    "- 'six' is in 'uv.lock' but not in 'pylock.toml'."
+            }
+        }
+
+        "ignore a blank index URL option" {
+            server.stubFor(get(urlPathEqualTo("$WHEEL_PATH.metadata")).willReturn(aResponse().withStatus(404)))
+
+            var configuredIndexUrl: String? = "unset"
+            val pylock = Pylock(
+                config = PylockConfig(indexUrl = " ", checkConsistency = false),
+                indexClientFactory = {
+                    configuredIndexUrl = it
+                    PythonIndexClient()
+                }
+            )
+
+            pylock.resolveSingleProject(writeLockfile(tempdir()))
+
+            configuredIndexUrl should beNull()
+        }
+
+        "not report a Python requirement that differs only in notation" {
+            server.stubFor(get(urlPathEqualTo("$WHEEL_PATH.metadata")).willReturn(aResponse().withStatus(404)))
+
+            val dir = tempdir()
+            (dir / PYPROJECT_FILENAME).writeText(
+                "[project]\nname = \"pylock-example\"\nrequires-python = \">= 3.12.0\""
+            )
+
+            val lockfile = writeLockfile(dir, header = "requires-python = \">=3.12\"")
+
+            val result = createPylock().resolveSingleProject(lockfile)
+
+            result.issues.filter { "does not match" in it.message } should beEmpty()
+        }
+
+        "match the extras of the lockfile in normalized form" {
+            server.stubFor(get(urlPathEqualTo("$WHEEL_PATH.metadata")).willReturn(aResponse().withStatus(404)))
+
+            val dir = tempdir()
+            (dir / PYPROJECT_FILENAME).writeText(
+                """
+                    [project]
+                    name = "pylock-example"
+
+                    [project.optional-dependencies]
+                    YAML = ["pyyaml==6.0.2"]
+                """.trimIndent()
+            )
+
+            val result = createPylock().resolveSingleProject(writeLockfile(dir, header = "extras = [\"yaml\"]"))
+
+            result.issues.filter { "does not match" in it.message }.map { it.message }.shouldBeSingleton {
+                it shouldBe "The lockfile 'pylock.toml' does not match 'pyproject.toml', so it is probably " +
+                    "outdated:\n- 'pyyaml' is required but not locked."
+            }
+        }
+
+        "check the dependency groups the lockfile claims to cover" {
+            server.stubFor(get(urlPathEqualTo("$WHEEL_PATH.metadata")).willReturn(aResponse().withStatus(404)))
+
+            val dir = tempdir()
+            (dir / PYPROJECT_FILENAME).writeText(
+                """
+                    [project]
+                    name = "pylock-example"
+
+                    [dependency-groups]
+                    dev = ["pytest==8.3.5"]
+                    docs = ["sphinx"]
+                """.trimIndent()
+            )
+
+            val lockfile = writeLockfile(dir, header = "dependency-groups = [\"dev\"]")
+
+            val result = createPylock().resolveSingleProject(lockfile)
+
+            // Only the "dev" group is covered by the lockfile, so the missing "docs" group must not be reported.
+            result.issues.filter { "does not match" in it.message }.map { it.message }.shouldBeSingleton {
+                it shouldBe "The lockfile 'pylock.toml' does not match 'pyproject.toml', so it is probably " +
+                    "outdated:\n- 'pytest' is required but not locked."
+            }
+        }
+
+        "report a Python requirement that differs from the project's" {
+            server.stubFor(get(urlPathEqualTo("$WHEEL_PATH.metadata")).willReturn(aResponse().withStatus(404)))
+
+            val dir = tempdir()
+            (dir / PYPROJECT_FILENAME).writeText(
+                "[project]\nname = \"pylock-example\"\nrequires-python = \">=3.13\""
+            )
+
+            val lockfile = writeLockfile(dir, header = "requires-python = \">=3.12\"")
+
+            val result = createPylock().resolveSingleProject(lockfile)
+
+            result.issues.filter { "does not match" in it.message }.map { it.message }.shouldBeSingleton {
+                it shouldBe "The lockfile 'pylock.toml' does not match 'pyproject.toml', so it is probably " +
+                    "outdated:\n- The lockfile requires Python '>=3.12' but the project requires Python '>=3.13'."
             }
         }
     }

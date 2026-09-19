@@ -1,0 +1,7 @@
+# Top-level requirements that were changed after the lockfile was created.
+cattrs == 24.1.3  # The lockfile still has 24.1.2.
+colorama==0.4.6 ; sys_platform == 'win32'
+requests>=2.32 \
+    --hash=sha256:0000000000000000000000000000000000000000000000000000000000000000
+-r requirements-dev.txt
+--index-url https://pypi.org/simple

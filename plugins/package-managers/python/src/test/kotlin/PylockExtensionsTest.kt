@@ -38,6 +38,7 @@ import org.ossreviewtoolkit.model.RemoteArtifact
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.plugins.packagemanagers.python.utils.PythonCoreMetadata
+import org.ossreviewtoolkit.plugins.packagemanagers.python.utils.PythonRequirement
 
 private fun indexPackage(
     name: String,
@@ -389,6 +390,102 @@ class PylockExtensionsTest : WordSpec({
             scopes.getValue("dev").dependencies should containExactly(
                 PackageReference(id("pytest", "8.3.5"), dependencies = setOf(PackageReference(id("attrs", "26.1.0"))))
             )
+        }
+    }
+
+    "findUnsatisfied()" should {
+        val lockedVersions = mapOf(
+            "cattrs" to setOf("24.1.2"),
+            "attrs" to setOf("25.1.0", "26.1.0"),
+            "workspace-member" to setOf("")
+        )
+
+        "report requirements that are not locked" {
+            val requirements = listOf(PythonRequirement("cattrs"), PythonRequirement("requests"))
+
+            requirements.findUnsatisfied(lockedVersions, projectName = null) should containExactly(
+                "'requests' is required but not locked."
+            )
+        }
+
+        "not report a conditional requirement that is not locked" {
+            val requirements = listOf(PythonRequirement("colorama", hasMarker = true))
+
+            requirements.findUnsatisfied(lockedVersions, projectName = null) should beEmpty()
+        }
+
+        "report a pinned version that differs from all locked versions" {
+            val requirements = listOf(
+                PythonRequirement("cattrs", pinnedVersion = "24.1.3"),
+                PythonRequirement("attrs", pinnedVersion = "26.1.0")
+            )
+
+            requirements.findUnsatisfied(lockedVersions, projectName = null) should containExactly(
+                "'cattrs' is pinned to version 24.1.3 but locked at version 24.1.2."
+            )
+        }
+
+        "not report per-environment pins if one of them is locked" {
+            val requirements = listOf(
+                PythonRequirement("cattrs", pinnedVersion = "24.1.2", hasMarker = true),
+                PythonRequirement("cattrs", pinnedVersion = "24.1.3", hasMarker = true)
+            )
+
+            requirements.findUnsatisfied(lockedVersions, projectName = null) should beEmpty()
+        }
+
+        "report per-environment pins if none of them is locked" {
+            val requirements = listOf(
+                PythonRequirement("cattrs", pinnedVersion = "24.1.3", hasMarker = true),
+                PythonRequirement("cattrs", pinnedVersion = "24.1.4", hasMarker = true)
+            )
+
+            requirements.findUnsatisfied(lockedVersions, projectName = null) should containExactly(
+                "'cattrs' is pinned to version 24.1.3, 24.1.4 but locked at version 24.1.2."
+            )
+        }
+
+        "report a package that is missing if any of its requirements is unconditional" {
+            val requirements = listOf(
+                PythonRequirement("colorama", hasMarker = true),
+                PythonRequirement("colorama")
+            )
+
+            requirements.findUnsatisfied(lockedVersions, projectName = null) should containExactly(
+                "'colorama' is required but not locked."
+            )
+        }
+
+        "not report a pin on a package that is locked as a local source tree" {
+            val requirements = listOf(PythonRequirement("workspace-member", pinnedVersion = "2.49.0"))
+
+            requirements.findUnsatisfied(lockedVersions, projectName = null) should beEmpty()
+        }
+
+        "compare pinned versions in normalized form" {
+            val requirements = listOf(PythonRequirement("attrs", pinnedVersion = "v26.1"))
+
+            requirements.findUnsatisfied(lockedVersions, projectName = null) should beEmpty()
+        }
+
+        "accept a locked local version for a pin without a local version label" {
+            val requirements = listOf(PythonRequirement("torch", pinnedVersion = "2.6.0"))
+
+            requirements.findUnsatisfied(mapOf("torch" to setOf("2.6.0+cpu")), projectName = null) should beEmpty()
+        }
+
+        "compare an arbitrary equality pin literally" {
+            val requirements = listOf(PythonRequirement("attrs", pinnedVersion = "26.1", isArbitraryPin = true))
+
+            requirements.findUnsatisfied(lockedVersions, projectName = null) should containExactly(
+                "'attrs' is pinned to version 26.1 but locked at version 25.1.0, 26.1.0."
+            )
+        }
+
+        "skip requirements on the project itself" {
+            val requirements = listOf(PythonRequirement("pylock-example"))
+
+            requirements.findUnsatisfied(lockedVersions, projectName = "Pylock_Example") should beEmpty()
         }
     }
 })

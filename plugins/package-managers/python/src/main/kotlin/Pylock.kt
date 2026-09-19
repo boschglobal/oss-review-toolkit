@@ -33,6 +33,7 @@ import org.ossreviewtoolkit.analyzer.PackageManagerResult
 import org.ossreviewtoolkit.analyzer.ProjectResults
 import org.ossreviewtoolkit.downloader.VersionControlSystem
 import org.ossreviewtoolkit.model.Identifier
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Project
 import org.ossreviewtoolkit.model.ProjectAnalyzerResult
 import org.ossreviewtoolkit.model.Severity
@@ -42,9 +43,14 @@ import org.ossreviewtoolkit.model.config.Excludes
 import org.ossreviewtoolkit.model.config.Includes
 import org.ossreviewtoolkit.model.createAndLogIssue
 import org.ossreviewtoolkit.plugins.api.OrtPlugin
+import org.ossreviewtoolkit.plugins.api.OrtPluginOption
 import org.ossreviewtoolkit.plugins.api.PluginDescriptor
 import org.ossreviewtoolkit.plugins.packagemanagers.python.utils.PythonIndexClient
+import org.ossreviewtoolkit.plugins.packagemanagers.python.utils.PythonRequirement
 import org.ossreviewtoolkit.plugins.packagemanagers.python.utils.deduplicate
+import org.ossreviewtoolkit.plugins.packagemanagers.python.utils.normalizeVersionSpecifier
+import org.ossreviewtoolkit.plugins.packagemanagers.python.utils.parseRequirementString
+import org.ossreviewtoolkit.plugins.packagemanagers.python.utils.parseRequirementsFile
 import org.ossreviewtoolkit.utils.common.Os
 import org.ossreviewtoolkit.utils.ort.runBlocking
 
@@ -56,6 +62,8 @@ private const val PROJECT_TYPE = "Pylock"
  */
 internal const val LOCKFILE_NAME = "pylock.toml"
 internal const val NAMED_LOCKFILE_GLOB = "pylock.*.toml"
+
+private const val REQUIREMENTS_FILENAME = "requirements.txt"
 
 /** The environment variable pip uses to configure the package index. */
 private const val PIP_INDEX_URL_ENV = "PIP_INDEX_URL"
@@ -69,7 +77,15 @@ data class PylockConfig(
      * packages instead of the index recorded in the lockfile, e.g. to use a proxy or mirror of PyPI. If not set,
      * the value of the `PIP_INDEX_URL` environment variable is used the same way.
      */
-    val indexUrl: String?
+    val indexUrl: String?,
+
+    /**
+     * Whether to warn if the lockfile does not match the requirements in `pyproject.toml` and `requirements.txt`,
+     * or the lockfile of uv, PDM or Poetry it was exported from. Disable this if such differences are intended,
+     * e.g. because the lockfile is created for a single platform only.
+     */
+    @OrtPluginOption(defaultValue = "true")
+    val checkConsistency: Boolean
 )
 
 /**
@@ -156,6 +172,8 @@ class Pylock internal constructor(
                     )
                 )
             }
+
+            if (config.checkConsistency) addAll(checkConsistency(pylock, pyproject, definitionFile))
         }
 
         val project = createProject(pyproject, analysisRoot, definitionFile, pylock)
@@ -201,5 +219,77 @@ class Pylock internal constructor(
             homepageUrl = projectMetadata?.getHomepageUrl().orEmpty(),
             scopeDependencies = pylock.packages.toScopes()
         )
+    }
+
+    /**
+     * Return a warning for each file next to the lockfile that the lockfile does not match, which indicates that the
+     * lockfile is outdated. Only the extras and dependency groups the lockfile claims to cover are checked, as a
+     * lockfile may omit e.g. development dependencies on purpose.
+     */
+    private fun checkConsistency(pylock: PylockFile, pyproject: PyprojectFile?, definitionFile: File): List<Issue> {
+        val lockedVersions = pylock.packages.groupBy({ it.normalizedName }, { it.version.orEmpty() })
+            .mapValues { (_, versions) -> versions.toSet() }
+        val projectName = pyproject?.getProjectMetadata()?.name
+
+        fun createIssue(sourceFile: File, messages: List<String>): Issue? =
+            messages.takeIf { it.isNotEmpty() }?.let {
+                createAndLogIssue(
+                    "The lockfile '${definitionFile.name}' does not match '${sourceFile.name}', so it is probably " +
+                        "outdated:\n" + it.joinToString("\n") { message -> "- $message" },
+                    Severity.WARNING
+                )
+            }
+
+        val requirementsFile = definitionFile.resolveSibling(REQUIREMENTS_FILENAME)
+        val requirementsIssue = requirementsFile.takeIf { it.isFile }?.let { file ->
+            createIssue(file, parseRequirementsFile(file).findUnsatisfied(lockedVersions, projectName))
+        }
+
+        val pyprojectIssue = pyproject?.let {
+            val pyprojectFile = definitionFile.resolveSibling(PYPROJECT_FILENAME)
+            createIssue(pyprojectFile, findUnsatisfiedPyprojectRequirements(pylock, it, lockedVersions))
+        }
+
+        val nativeLockfileIssues = findNativeLockfiles(definitionFile.parentFile, pylock).mapNotNull { nativeLockfile ->
+            createIssue(nativeLockfile.file, nativeLockfile.findDivergences(definitionFile, lockedVersions))
+        }
+
+        return listOfNotNull(requirementsIssue, pyprojectIssue) + nativeLockfileIssues
+    }
+
+    private fun findUnsatisfiedPyprojectRequirements(
+        pylock: PylockFile,
+        pyproject: PyprojectFile,
+        lockedVersions: Map<String, Set<String>>
+    ): List<String> {
+        val project = pyproject.getProjectMetadata()
+
+        val requirements = buildList<PythonRequirement> {
+            project?.dependencies?.mapNotNullTo(this) { parseRequirementString(it) }
+
+            pylock.extras.forEach { extra ->
+                project?.getOptionalDependencies(extra)?.mapNotNullTo(this) { parseRequirementString(it) }
+            }
+
+            (pylock.dependencyGroups + pylock.defaultGroups).distinct().forEach { group ->
+                addAll(pyproject.getDependencyGroup(group))
+            }
+        }
+
+        val messages = requirements.distinct().findUnsatisfied(lockedVersions, project?.name).toMutableList()
+
+        // Both files should have the same Python version requirement. Compare them in normalized form, as
+        // whitespace, the order of clauses and trailing zeros are insignificant.
+        val lockedRequiresPython = pylock.requiresPython
+        val declaredRequiresPython = project?.requiresPython
+
+        if (lockedRequiresPython != null && declaredRequiresPython != null &&
+            lockedRequiresPython.normalizeVersionSpecifier() != declaredRequiresPython.normalizeVersionSpecifier()
+        ) {
+            messages += "The lockfile requires Python '$lockedRequiresPython' but the project requires Python " +
+                "'$declaredRequiresPython'."
+        }
+
+        return messages
     }
 }

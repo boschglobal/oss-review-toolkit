@@ -23,6 +23,7 @@ import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.should
 
 import org.ossreviewtoolkit.analyzer.resolveSingleProject
+import org.ossreviewtoolkit.analyzer.withInvariantIssues
 import org.ossreviewtoolkit.model.toYaml
 import org.ossreviewtoolkit.utils.test.getAssetFile
 import org.ossreviewtoolkit.utils.test.matchExpectedResult
@@ -36,6 +37,15 @@ class PylockFunTest : WordSpec({
             val result = PylockFactory.create().resolveSingleProject(definitionFile, resolveScopes = true)
 
             result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
+        }
+
+        "report a lockfile that does not match the requirements and pyproject files" {
+            val definitionFile = getAssetFile("projects/synthetic/pylock-outdated/pylock.toml")
+            val expectedResultFile = getAssetFile("projects/synthetic/pylock-outdated-expected-output.yml")
+
+            val result = PylockFactory.create().resolveSingleProject(definitionFile, resolveScopes = true)
+
+            result.withInvariantIssues().toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
         }
     }
 })

@@ -19,8 +19,8 @@ project:
   - name: "build"
     dependencies:
     - id: "GitHubAction:actions:checkout:3d3c42e5aac5ba805825da76410c181273ba90b1"
+    - id: "GitHubAction:bosch-ocaas:ort:<REPLACE_VCS_REVISION>"
     - id: "GitHubAction:docker:setup-buildx-action:bb05f3f5519dd87d3ba754cc423b652a5edd6d2c"
-    - id: "GitHubAction:oss-review-toolkit:ort:<REPLACE_VCS_REVISION>"
 packages:
 - id: "GitHubAction:actions:checkout:3d3c42e5aac5ba805825da76410c181273ba90b1"
   purl: "pkg:github/actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
@@ -50,6 +50,34 @@ packages:
     path: ""
   source_code_origins:
   - "VCS"
+- id: "GitHubAction:bosch-ocaas:ort:<REPLACE_VCS_REVISION>"
+  purl: "pkg:github/bosch-ocaas/ort#.github/actions/free-disk-space"
+  declared_licenses: []
+  declared_licenses_processed: {}
+  description: ""
+  homepage_url: "https://github.com/bosch-ocaas/ort"
+  binary_artifact:
+    url: ""
+    hash:
+      value: ""
+      algorithm: ""
+  source_artifact:
+    url: ""
+    hash:
+      value: ""
+      algorithm: ""
+  vcs:
+    type: "Git"
+    url: "<REPLACE_VCS_PROCESSED_URL>"
+    revision: "<REPLACE_VCS_REVISION>"
+    path: ".github/actions/free-disk-space"
+  vcs_processed:
+    type: "Git"
+    url: "<REPLACE_VCS_PROCESSED_URL>"
+    revision: "<REPLACE_VCS_REVISION>"
+    path: ".github/actions/free-disk-space"
+  source_code_origins:
+  - "VCS"
 - id: "GitHubAction:docker:setup-buildx-action:bb05f3f5519dd87d3ba754cc423b652a5edd6d2c"
   purl: "pkg:github/docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c"
   declared_licenses: []
@@ -76,33 +104,5 @@ packages:
     url: "https://github.com/docker/setup-buildx-action.git"
     revision: "bb05f3f5519dd87d3ba754cc423b652a5edd6d2c"
     path: ""
-  source_code_origins:
-  - "VCS"
-- id: "GitHubAction:oss-review-toolkit:ort:<REPLACE_VCS_REVISION>"
-  purl: "pkg:github/oss-review-toolkit/ort#.github/actions/free-disk-space"
-  declared_licenses: []
-  declared_licenses_processed: {}
-  description: ""
-  homepage_url: "https://github.com/oss-review-toolkit/ort"
-  binary_artifact:
-    url: ""
-    hash:
-      value: ""
-      algorithm: ""
-  source_artifact:
-    url: ""
-    hash:
-      value: ""
-      algorithm: ""
-  vcs:
-    type: "Git"
-    url: "<REPLACE_VCS_PROCESSED_URL>"
-    revision: "<REPLACE_VCS_REVISION>"
-    path: ".github/actions/free-disk-space"
-  vcs_processed:
-    type: "Git"
-    url: "<REPLACE_VCS_PROCESSED_URL>"
-    revision: "<REPLACE_VCS_REVISION>"
-    path: ".github/actions/free-disk-space"
   source_code_origins:
   - "VCS"

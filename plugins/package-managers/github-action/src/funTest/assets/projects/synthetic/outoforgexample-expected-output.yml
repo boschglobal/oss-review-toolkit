@@ -15,7 +15,7 @@ project:
     revision: "<REPLACE_VCS_REVISION>"
     path: "plugins/package-managers/github-action/src/funTest/assets/projects/synthetic/sha-pinning/.github/workflows"
   description: "Out of Org"
-  homepage_url: "https://github.com/oss-review-toolkit/ort"
+  homepage_url: "https://github.com/bosch-ocaas/ort"
   scopes:
   - name: "demo"
     dependencies:

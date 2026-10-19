@@ -68,9 +68,6 @@ jobs:
       run: ./gradlew buildHealth checkSortDependencies
   detekt-issues:
     runs-on: ubuntu-26.04
-    permissions:
-      # Needed for SARIF scanning upload.
-      security-events: write
     steps:
     - name: Checkout Repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -80,11 +77,6 @@ jobs:
       run: ./gradlew detekt
     - name: Check for Detekt Issues with type resolution
       run: ./gradlew detektMain detektTestFixtures detektTest detektFunTest
-    - name: Upload SARIF File
-      uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
-      if: always() # Upload even if the previous step failed.
-      with:
-        sarif_file: build/reports/detekt/merged.sarif
   markdown-links:
     runs-on: ubuntu-26.04
     permissions:
@@ -129,9 +121,6 @@ jobs:
   qodana-scan:
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-26.04
-    permissions:
-      # Needed for SARIF scanning upload.
-      security-events: write
     steps:
     - name: Checkout Repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -142,10 +131,6 @@ jobs:
       with:
         post-pr-comment: false
         use-caches: false
-    - name: Upload Code Scanning Results
-      uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
-      with:
-        sarif_file: ${{ runner.temp }}/qodana/results/qodana.sarif.json
   renovate-validation:
     runs-on: ubuntu-26.04
     steps:

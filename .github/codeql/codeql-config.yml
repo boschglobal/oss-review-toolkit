@@ -1,3 +1,0 @@
-paths-ignore:
-  - '**/src/funTest/assets/**'
-  - '**/src/test/assets/**'

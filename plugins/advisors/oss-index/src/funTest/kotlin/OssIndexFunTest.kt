@@ -21,6 +21,7 @@ package org.ossreviewtoolkit.plugins.advisors.ossindex
 
 import io.kotest.core.annotation.Condition
 import io.kotest.core.annotation.EnabledIf
+import io.kotest.core.annotation.Ignored
 import io.kotest.core.spec.Spec
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.collections.beEmpty
@@ -37,6 +38,7 @@ import org.ossreviewtoolkit.model.utils.toPurl
 import org.ossreviewtoolkit.plugins.advisors.api.normalizeVulnerabilityData
 import org.ossreviewtoolkit.plugins.api.Secret
 
+@Ignored(reason = "OSS Index is not used by this fork.")
 @EnabledIf(OssIndexCredentials::class)
 class OssIndexFunTest : WordSpec({
     val oi = OssIndexFactory.create(

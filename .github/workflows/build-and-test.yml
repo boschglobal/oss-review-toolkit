@@ -74,9 +74,6 @@ jobs:
       uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
     - name: Run functional tests that do not require external tools
       env:
-        OSSKB_API_KEY: ${{ secrets.OSSKB_API_KEY }}
-        SCANOSS_API_KEY: ${{ secrets.SCANOSS_API_KEY }}
-        SONATYPE_PAT: ${{ secrets.SONATYPE_PAT }}
         VULNERABLECODE_API_KEY: ${{ secrets.VULNERABLECODE_API_KEY }}
       run: mise gradle -Dkotest.tags=!RequiresExternalTool funTest jacocoFunTestReport
     - name: Create Test Summary

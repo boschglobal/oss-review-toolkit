@@ -23,6 +23,7 @@ import com.scanoss.rest.ScanApi
 
 import io.kotest.core.annotation.Condition
 import io.kotest.core.annotation.EnabledIf
+import io.kotest.core.annotation.Ignored
 import io.kotest.core.spec.Spec
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.beEmpty
@@ -55,6 +56,7 @@ private val ORT_PURLS_TO_IGNORE = listOf(
     "pkg:codeberg/oss-review-toolkit/ort"
 )
 
+@Ignored(reason = "ScanOSS is not used by this fork.")
 @EnabledIf(CloudCheck::class)
 class ScanOssFunTest : StringSpec({
     val flags = listOf(ScanFlag.ENABLE_DOWNLOAD_URL, ScanFlag.ENABLE_GITHUB_FULL_PATH)

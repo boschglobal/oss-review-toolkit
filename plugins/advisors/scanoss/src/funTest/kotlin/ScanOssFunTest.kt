@@ -21,6 +21,7 @@ package org.ossreviewtoolkit.plugins.advisors.scanoss
 
 import io.kotest.core.annotation.Condition
 import io.kotest.core.annotation.EnabledIf
+import io.kotest.core.annotation.Ignored
 import io.kotest.core.spec.Spec
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.inspectors.forAll
@@ -41,6 +42,7 @@ import org.ossreviewtoolkit.model.utils.toPurl
 import org.ossreviewtoolkit.plugins.api.Secret
 import org.ossreviewtoolkit.utils.test.identifierToPackage
 
+@Ignored(reason = "ScanOSS is not used by this fork.")
 @EnabledIf(ScanOssCheck::class)
 class ScanOssFunTest : WordSpec({
     val apiKey = checkNotNull(ScanOssCheck.getScanOssApiKey())

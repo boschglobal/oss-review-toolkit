@@ -62,11 +62,6 @@ jobs:
       with:
         paths: "**/test-results/**/TEST-*.xml"
       if: always()
-    - name: Upload code coverage data
-      uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        flags: test-${{ matrix.os }}
   funTest-no-external-tools:
     needs: build
     runs-on: ubuntu-26.04
@@ -89,11 +84,6 @@ jobs:
       with:
         paths: "**/test-results/**/TEST-*.xml"
       if: always()
-    - name: Upload code coverage data
-      uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        flags: funTest-no-external-tools
   funTest-external-tools:
     runs-on: ubuntu-26.04
     steps:
@@ -134,11 +124,6 @@ jobs:
       with:
         paths: "**/test-results/**/TEST-*.xml"
       if: always()
-    - name: Upload code coverage data
-      uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        flags: funTest-external-tools
   publication-test:
     needs: build
     runs-on: ubuntu-26.04

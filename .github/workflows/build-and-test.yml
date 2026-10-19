@@ -52,10 +52,10 @@ jobs:
       uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
       if: runner.os != 'Windows'
     - name: Run unit tests in a minimal environment
-      run: mise gradle --scan test jacocoTestReport
+      run: mise gradle test jacocoTestReport
       if: runner.os != 'Windows'
     - name: Run unit tests
-      run: ./gradlew --scan test jacocoTestReport
+      run: ./gradlew test jacocoTestReport
       if: runner.os == 'Windows'
     - name: Create Test Summary
       uses: test-summary/action@37b508cfee6d4d080eedd00b5bb240a6a784a6a5 # v2
@@ -83,7 +83,7 @@ jobs:
         SCANOSS_API_KEY: ${{ secrets.SCANOSS_API_KEY }}
         SONATYPE_PAT: ${{ secrets.SONATYPE_PAT }}
         VULNERABLECODE_API_KEY: ${{ secrets.VULNERABLECODE_API_KEY }}
-      run: mise gradle --scan -Dkotest.tags=!RequiresExternalTool funTest jacocoFunTestReport
+      run: mise gradle -Dkotest.tags=!RequiresExternalTool funTest jacocoFunTestReport
     - name: Create Test Summary
       uses: test-summary/action@37b508cfee6d4d080eedd00b5bb240a6a784a6a5 # v2
       with:
@@ -128,7 +128,7 @@ jobs:
           -e HOME=/home/runner \
           -e GRADLE_OPTS="$GRADLE_OPTS" \
           ${{ env.TEST_IMAGE_TAG }} \
-          -c "./gradlew --scan -Dkotest.tags=RequiresExternalTool funTest jacocoFunTestReport"
+          -c "./gradlew -Dkotest.tags=RequiresExternalTool funTest jacocoFunTestReport"
     - name: Create Test Summary
       uses: test-summary/action@37b508cfee6d4d080eedd00b5bb240a6a784a6a5 # v2
       with:

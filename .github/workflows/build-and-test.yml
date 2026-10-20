@@ -10,7 +10,6 @@ on:
 
 env:
   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.logging.stacktrace=all -Dkotest.assertions.multi-line-diff=unified
-  REGISTRY: ghcr.io
   TEST_IMAGE_TAG: ort:test
 
 jobs:
@@ -82,40 +81,49 @@ jobs:
         paths: "**/test-results/**/TEST-*.xml"
       if: always()
   funTest-external-tools:
-    runs-on: ubuntu-26.04
+    # Use the self-hosted runners as the standard GitHub-hosted runners for private repositories do not have enough
+    # memory for these tests. The self-hosted runners use Docker-in-Docker and route all traffic through a
+    # TLS-intercepting proxy.
+    runs-on: self-hosted
     steps:
     - name: Checkout Repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         submodules: recursive
-    - name: Free Disk Space
-      uses: ./.github/actions/free-disk-space
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
     - name: Build ORT Docker Image
-      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-      with:
-        context: .
-        load: true
-        tags: ${{ env.TEST_IMAGE_TAG }}
-        target: all-tools
-        cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/ort:cache
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      run: |
+        # Make the tools in the image trust the CA certificates of the runner, which include the ones of the
+        # TLS-intercepting proxy. The Dockerfile imports all CRT-files from the root of the build context.
+        find /usr/local/share/ca-certificates -name "*.crt" -exec cp {} . \;
+
+        # Build the image's user with the runner's user ID so that the container can write to the workspace. Bind
+        # mounts only work for the workspace, as the Docker daemon runs in a separate container that only shares the
+        # work directory with the runner.
+        docker build \
+          --progress=plain \
+          --network=host \
+          --build-arg http_proxy \
+          --build-arg https_proxy \
+          --build-arg no_proxy \
+          --build-arg USER_ID=$(id -u) \
+          --target all-tools \
+          --tag ${{ env.TEST_IMAGE_TAG }} \
+          .
     - name: Run functional tests that do require external tools
       run: |
-        # Run the functional tests in the Docker container.
+        # Run the functional tests in the Docker container. Configure the proxy for Gradle first, and make Python
+        # tools use the system certificates, which include the ones of the TLS-intercepting proxy.
         docker run \
-          -u $(id -u):$(id -g) \
-          -v /etc/group:/etc/group:ro \
-          -v /etc/passwd:/etc/passwd:ro \
-          -v /home/runner:/home/runner \
+          --network=host \
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
-          -e HOME=/home/runner \
+          -e http_proxy \
+          -e https_proxy \
+          -e no_proxy \
+          -e REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
           -e GRADLE_OPTS="$GRADLE_OPTS" \
           ${{ env.TEST_IMAGE_TAG }} \
-          -c "./gradlew -Dkotest.tags=RequiresExternalTool funTest jacocoFunTestReport"
+          -c "scripts/set_gradle_proxy.sh; ./gradlew -Dkotest.tags=RequiresExternalTool funTest jacocoFunTestReport"
     - name: Create Test Summary
       uses: test-summary/action@37b508cfee6d4d080eedd00b5bb240a6a784a6a5 # v2
       with:

@@ -32,6 +32,16 @@ ENV LC_ALL=en_US.UTF-8
 COPY scripts/set_apt_proxy.sh /etc/scripts/set_apt_proxy.sh
 RUN /etc/scripts/set_apt_proxy.sh
 
+# Copy certificates scripts only.
+COPY scripts/*_certificates.sh /etc/scripts/
+
+# Set this to a directory containing CRT-files for custom certificates that ORT and all build tools should know about.
+ARG CRT_FILES="*.crt"
+COPY "$CRT_FILES" /tmp/certificates/
+
+# Import the custom certificates before downloading anything via HTTPS, as e.g. a TLS-intercepting proxy requires them.
+RUN /etc/scripts/import_certificates.sh /tmp/certificates/
+
 # Base package set
 RUN --mount=type=cache,target=/var/cache,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -98,22 +108,17 @@ RUN --mount=type=tmpfs,target=/var/log \
 RUN chgrp $USERNAME /opt \
     && chmod g+wx /opt
 
-# sudo support
+# sudo support, keeping the proxy settings for commands run via sudo.
 RUN echo "$USERNAME ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME \
+    && echo 'Defaults env_keep += "http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY"' \
+        >> /etc/sudoers.d/$USERNAME \
     && chmod 0440 /etc/sudoers.d/$USERNAME
 
 # Make curl trust system certificates both at container build timeand run time.
 RUN echo "ca-native" > /etc/curlrc
 
-# Copy certificates scripts only.
-COPY scripts/*_certificates.sh /etc/scripts/
-
-# Set this to a directory containing CRT-files for custom certificates that ORT and all build tools should know about.
-ARG CRT_FILES="*.crt"
-COPY "$CRT_FILES" /tmp/certificates/
-
-RUN /etc/scripts/export_proxy_certificates.sh /tmp/certificates/ \
-    && /etc/scripts/import_certificates.sh /tmp/certificates/
+RUN /etc/scripts/export_proxy_certificates.sh /tmp/proxy-certificates/ \
+    && /etc/scripts/import_certificates.sh /tmp/proxy-certificates/
 
 USER $USERNAME
 WORKDIR $HOMEDIR

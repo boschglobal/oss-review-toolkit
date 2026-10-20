@@ -246,7 +246,14 @@ tasks.withType<Test>().configureEach {
     val testSystemProperties = listOf(
         "java.io.tmpdir",
         "kotest.assertions.multi-line-diff",
-        "kotest.tags"
+        "kotest.tags",
+        // Forward the proxy configuration, e.g. from "systemProp" entries in Gradle properties, to make tests that
+        // access the network work behind a proxy.
+        "http.nonProxyHosts",
+        "http.proxyHost",
+        "http.proxyPort",
+        "https.proxyHost",
+        "https.proxyPort"
     ).mapNotNull { key ->
         System.getProperty(key)?.let { key to it }
     }

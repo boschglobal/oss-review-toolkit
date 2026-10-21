@@ -19,6 +19,7 @@
 
 package org.ossreviewtoolkit.plugins.packagemanagers.mix
 
+import io.kotest.core.annotation.Ignored
 import io.kotest.core.annotation.Tags
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.beEmpty
@@ -34,6 +35,10 @@ import org.ossreviewtoolkit.utils.common.div
 import org.ossreviewtoolkit.utils.test.getAssetFile
 import org.ossreviewtoolkit.utils.test.matchExpectedResult
 
+@Ignored(
+    reason = "The mix_sbom tool fails to start on the self-hosted runners, presumably due to their TLS-intercepting " +
+        "proxy."
+)
 @Tags("RequiresExternalTool")
 class MixFunTest : StringSpec({
     "Resolve dependencies for a sample project correctly" {

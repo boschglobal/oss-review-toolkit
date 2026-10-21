@@ -19,6 +19,7 @@
 
 package org.ossreviewtoolkit.plugins.packagemanagers.stack
 
+import io.kotest.core.annotation.Ignored
 import io.kotest.core.annotation.Tags
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.should
@@ -28,6 +29,10 @@ import org.ossreviewtoolkit.model.toYaml
 import org.ossreviewtoolkit.utils.test.getAssetFile
 import org.ossreviewtoolkit.utils.test.matchExpectedResult
 
+@Ignored(
+    reason = "The proxy of the self-hosted runners blocks access to Hackage, from which Stack downloads package " +
+        "metadata."
+)
 @Tags("RequiresExternalTool")
 class StackFunTest : WordSpec({
     "Resolving project dependencies" should {

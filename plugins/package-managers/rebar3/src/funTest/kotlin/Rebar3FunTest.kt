@@ -19,6 +19,7 @@
 
 package org.ossreviewtoolkit.plugins.packagemanagers.rebar3
 
+import io.kotest.core.annotation.Ignored
 import io.kotest.core.annotation.Tags
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.beEmpty
@@ -31,6 +32,10 @@ import org.ossreviewtoolkit.model.toYaml
 import org.ossreviewtoolkit.utils.test.getAssetFile
 import org.ossreviewtoolkit.utils.test.matchExpectedResult
 
+@Ignored(
+    reason = "The bombom tool does not produce any output on the self-hosted runners, presumably due to their " +
+        "TLS-intercepting proxy."
+)
 @Tags("RequiresExternalTool")
 class Rebar3FunTest : StringSpec({
     "Resolve dependencies for a sample project correctly" {

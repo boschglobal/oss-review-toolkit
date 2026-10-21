@@ -246,6 +246,7 @@ tasks.withType<Test>().configureEach {
     val testSystemProperties = listOf(
         "java.io.tmpdir",
         "kotest.assertions.multi-line-diff",
+        "kotest.framework.timeout",
         "kotest.tags",
         // Forward the proxy configuration, e.g. from "systemProp" entries in Gradle properties, to make tests that
         // access the network work behind a proxy.

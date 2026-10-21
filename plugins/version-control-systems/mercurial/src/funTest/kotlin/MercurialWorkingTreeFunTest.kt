@@ -19,6 +19,7 @@
 
 package org.ossreviewtoolkit.plugins.versioncontrolsystems.mercurial
 
+import io.kotest.core.annotation.Ignored
 import io.kotest.core.annotation.Tags
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.engine.spec.tempdir
@@ -36,6 +37,10 @@ import org.ossreviewtoolkit.utils.common.div
 import org.ossreviewtoolkit.utils.common.extractResource
 import org.ossreviewtoolkit.utils.common.unpackZip
 
+@Ignored(
+    reason = "Mercurial prefers the root certificates from certifi, which do not include the certificates of the " +
+        "TLS-intercepting proxy of the self-hosted runners."
+)
 @Tags("RequiresExternalTool")
 class MercurialWorkingTreeFunTest : StringSpec({
     val hg = Mercurial()

@@ -19,6 +19,7 @@
 
 package org.ossreviewtoolkit.plugins.packagemanagers.sbt
 
+import io.kotest.core.annotation.Ignored
 import io.kotest.core.annotation.Tags
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -33,6 +34,10 @@ import org.ossreviewtoolkit.utils.test.getAssetFile
 import org.ossreviewtoolkit.utils.test.matchExpectedResult
 import org.ossreviewtoolkit.utils.test.patchActualResult
 
+@Ignored(
+    reason = "sbt is not supported by this fork, and the tests are not reliable behind the proxy of the self-hosted " +
+        "runners."
+)
 @Tags("RequiresExternalTool")
 class SbtFunTest : StringSpec({
     "Dependencies of the external 'multi-project' should be detected correctly" {

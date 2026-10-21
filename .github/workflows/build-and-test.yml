@@ -112,7 +112,8 @@ jobs:
     - name: Run functional tests that do require external tools
       run: |
         # Run the functional tests in the Docker container. Configure the proxy for Gradle first, and make Python
-        # tools use the system certificates, which include the ones of the TLS-intercepting proxy.
+        # tools use the system certificates, which include the ones of the TLS-intercepting proxy. Yarn 2+ ignores the
+        # common proxy environment variables, so configure the proxy via its own ones.
         docker run \
           --network=host \
           -v ${{ github.workspace }}:/workspace \
@@ -120,6 +121,8 @@ jobs:
           -e http_proxy \
           -e https_proxy \
           -e no_proxy \
+          -e YARN_HTTP_PROXY="$http_proxy" \
+          -e YARN_HTTPS_PROXY="$https_proxy" \
           -e REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
           -e GRADLE_OPTS="$GRADLE_OPTS" \
           ${{ env.TEST_IMAGE_TAG }} \

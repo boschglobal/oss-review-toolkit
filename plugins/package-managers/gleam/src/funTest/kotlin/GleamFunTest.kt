@@ -22,6 +22,7 @@ package org.ossreviewtoolkit.plugins.packagemanagers.gleam
 import com.github.tomakehurst.wiremock.WireMockServer
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration
 
+import io.kotest.core.annotation.Ignored
 import io.kotest.core.annotation.Tags
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.engine.spec.tempdir
@@ -50,6 +51,10 @@ import org.ossreviewtoolkit.utils.common.div
 import org.ossreviewtoolkit.utils.test.getAssetFile
 import org.ossreviewtoolkit.utils.test.matchExpectedResult
 
+@Ignored(
+    reason = "Gleam is not supported by this fork, and the Gleam CLI does not trust the certificates of the " +
+        "TLS-intercepting proxy of the self-hosted runners."
+)
 @Tags("RequiresExternalTool")
 class GleamFunTest : StringSpec({
     val server = WireMockServer(

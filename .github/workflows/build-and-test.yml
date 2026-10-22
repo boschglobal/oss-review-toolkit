@@ -115,7 +115,7 @@ jobs:
         # tools use the system certificates, which include the ones of the TLS-intercepting proxy. Yarn 2+ ignores the
         # common proxy environment variables, so configure the proxy via its own ones. Raise the timeout from Kotest's
         # default of 10 minutes to 30 minutes, as downloads through the proxy are slower and some specs exceed the
-        # default timeout.
+        # default timeout. Continue after failing tests to report all of them at once.
         docker run \
           --network=host \
           -v ${{ github.workspace }}:/workspace \
@@ -128,7 +128,7 @@ jobs:
           -e REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
           -e GRADLE_OPTS="$GRADLE_OPTS" \
           ${{ env.TEST_IMAGE_TAG }} \
-          -c "scripts/set_gradle_proxy.sh; ./gradlew -Dkotest.tags=RequiresExternalTool \
+          -c "scripts/set_gradle_proxy.sh; ./gradlew --continue -Dkotest.tags=RequiresExternalTool \
             -Dkotest.framework.timeout=1800000 funTest jacocoFunTestReport"
     - name: Create Test Summary
       uses: test-summary/action@37b508cfee6d4d080eedd00b5bb240a6a784a6a5 # v2
